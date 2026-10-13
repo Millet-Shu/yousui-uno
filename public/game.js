@@ -71,12 +71,11 @@ function renderLobby(state) {
 }
 
 // ===== 渲染游戏页 =====
-const T_LABEL = { 0: '', 1: '跳', 2: '转', 3: '+2', 4: '万能', 5: '+4' };
-const COLOR_LABEL = { red: '红', yellow: '黄', green: '绿', blue: '蓝' };
+const T_LABEL = { 0: '', 1: '⊘', 2: '⇄', 3: '+2', 4: '万能', 5: '+4' };
 
 function cardText(c) {
-  if (c.type === 0) return (COLOR_LABEL[c.color] || '') + c.value;
-  return (COLOR_LABEL[c.color] || '') + T_LABEL[c.type];
+  if (c.type === 0) return String(c.value);
+  return T_LABEL[c.type];
 }
 
 function renderGame(state) {
@@ -92,7 +91,7 @@ function renderGame(state) {
   state.players.filter(p => !p.isYou).forEach(p => {
     const div = document.createElement('div');
     div.className = 'opponent' + (p.isCurrent ? ' current' : '');
-    div.innerHTML = `<div class="name">${p.name}</div><div class="count">${p.handCount} 张</div>`;
+    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}</div><div class="count">${p.handCount} 张</div>`;
     oppEl.appendChild(div);
   });
 
