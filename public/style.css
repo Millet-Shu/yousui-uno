@@ -1,0 +1,245 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Microsoft YaHei", sans-serif;
+  background: #1a1f3a;
+  color: #fff;
+  min-height: 100vh;
+}
+
+.screen { display: none; min-height: 100vh; }
+.screen.active { display: flex; align-items: center; justify-content: center; }
+
+.panel {
+  background: #2a3055;
+  padding: 40px;
+  border-radius: 16px;
+  text-align: center;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+}
+
+h1 { font-size: 42px; margin-bottom: 20px; }
+h2 { margin-bottom: 10px; }
+
+input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #444;
+  border-radius: 8px;
+  background: #1a1f3a;
+  color: #fff;
+  font-size: 16px;
+  margin-bottom: 12px;
+  outline: none;
+}
+input:focus { border-color: #6c7bff; }
+
+.row { display: flex; gap: 10px; margin-bottom: 12px; }
+.row input { flex: 1; margin-bottom: 0; }
+
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  background: #444;
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+}
+.btn:hover { background: #555; }
+.btn.primary { background: #e04040; flex: 1; }
+.btn.primary:hover { background: #f05050; }
+.btn.ghost { background: transparent; color: #888; margin-top: 10px; }
+.btn.ghost:hover { color: #fff; background: #333; }
+
+.divider {
+  display: flex;
+  align-items: center;
+  margin: 16px 0;
+  color: #666;
+}
+.divider::before, .divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #444;
+}
+.divider span { padding: 0 12px; }
+
+.error { color: #f66; margin-top: 10px; min-height: 20px; }
+.hint { color: #888; font-size: 14px; margin-bottom: 16px; }
+.code { font-size: 32px; letter-spacing: 4px; color: #ffd040; font-weight: bold; }
+
+.player-list { margin: 20px 0; text-align: left; }
+.player-list .player {
+  background: #1a1f3a;
+  padding: 10px 16px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+}
+.player .badge { color: #888; font-size: 13px; }
+
+/* ===== 游戏页 ===== */
+#screen-game { display: none; }
+#screen-game.active { display: block; }
+
+#game-board {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  background: radial-gradient(ellipse at center, #1e3a5f 0%, #0f1a30 100%);
+  overflow: hidden;
+}
+
+#opponents {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 30px;
+}
+.opponent {
+  text-align: center;
+  background: rgba(0,0,0,0.3);
+  padding: 8px 16px;
+  border-radius: 8px;
+}
+.opponent.current { outline: 2px solid #ffd040; }
+.opponent .name { font-size: 14px; }
+.opponent .count { font-size: 12px; color: #aaa; }
+
+#center-area {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -60%);
+  display: flex;
+  gap: 30px;
+}
+
+.card {
+  width: 90px;
+  height: 130px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: bold;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.card.back {
+  background: repeating-linear-gradient(45deg, #c03030, #c03030 8px, #a02020 8px, #a02020 16px);
+  cursor: pointer;
+}
+.card.back:hover { transform: scale(1.05); }
+
+#top-card { background: #555; }
+#top-card.red { background: #e04040; }
+#top-card.yellow { background: #e8d020; color: #333; }
+#top-card.green { background: #30b050; }
+#top-card.blue { background: #3070d0; }
+#top-card.none { background: #333; }
+
+#status-bar {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(0,0,0,0.4);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+#game-log {
+  position: absolute;
+  bottom: 200px;
+  left: 20px;
+  width: 250px;
+  max-height: 150px;
+  overflow-y: auto;
+  background: rgba(0,0,0,0.3);
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+#hand-area {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  max-width: 95vw;
+  overflow-x: auto;
+  padding: 10px;
+}
+
+.hand-card {
+  width: 70px;
+  height: 100px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+  color: #fff;
+}
+.hand-card:hover { transform: translateY(-15px); }
+.hand-card.dim { opacity: 0.4; cursor: not-allowed; }
+.hand-card.dim:hover { transform: none; }
+.hand-card.red { background: #e04040; }
+.hand-card.yellow { background: #e8d020; color: #333; }
+.hand-card.green { background: #30b050; }
+.hand-card.blue { background: #3070d0; }
+.hand-card.none { background: #333; }
+
+/* 颜色选择弹窗 */
+.modal {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal.hidden { display: none; }
+.modal-content {
+  background: #2a3055;
+  padding: 30px;
+  border-radius: 12px;
+  text-align: center;
+}
+.color-buttons { display: flex; gap: 12px; margin-top: 16px; }
+.color-btn {
+  width: 70px;
+  height: 70px;
+  border: none;
+  border-radius: 50%;
+  font-size: 18px;
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.color-btn:hover { transform: scale(1.15); }
+
+@media (max-width: 600px) {
+  .hand-card { width: 55px; height: 80px; font-size: 16px; }
+  #game-log { display: none; }
+}
