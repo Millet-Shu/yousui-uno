@@ -32,8 +32,9 @@ $('btn-addai').onclick = () => socket.emit('addAI');
 $('btn-start').onclick = () => socket.emit('startGame');
 $('btn-uno').onclick = () => socket.emit('callUno');
 $('btn-grab').onclick = () => socket.emit('grabLead');
-$('btn-restart').onclick = () => socket.emit('restartGame');
+$('btn-restart').onclick = () => { socket.emit('restartGame'); $('menu-dropdown').classList.add('hidden'); };
 $('btn-endgame').onclick = () => location.reload();
+$('btn-menu').onclick = () => $('menu-dropdown').classList.toggle('hidden');
 
 // ===== 服务器事件 =====
 socket.on('roomCreated', ({ code, playerId }) => {
@@ -153,10 +154,6 @@ function renderGame(state) {
   }
   // 抢先手按钮
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing');
-  // 结束/重开按钮（游戏进行中显示）
-  const inGame = state.status === 'playing' || state.status === 'grabbing' || state.status === 'over';
-  $('btn-restart').classList.toggle('hidden', !inGame);
-  $('btn-endgame').classList.toggle('hidden', !inGame);
   // 牌组数量
   $('draw-count').textContent = state.drawPileCount || 0;
 
