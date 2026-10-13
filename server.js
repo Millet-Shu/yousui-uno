@@ -54,6 +54,8 @@ function isPlayable(c, topCard, currentColor, pendingDraw) {
   if (c.color === currentColor) return true;
   // 数字牌：同数字不同色也能出
   if (c.type === T.NUMBER && topCard.type === T.NUMBER && c.value === topCard.value) return true;
+  // 动作牌：同类型不同色也能出（红⊘接蓝⊘，红⇄接黄⇄）
+  if (c.type === topCard.type && c.type !== T.NUMBER) return true;
   return false;
 }
 

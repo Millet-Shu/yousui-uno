@@ -14,12 +14,14 @@ function showScreen(name) {
 
 // ===== 首页按钮 =====
 $('btn-create').onclick = () => {
-  const name = $('input-name').value.trim() || '玩家';
+  const name = $('input-name').value.trim();
+  if (!name) { $('home-error').textContent = '请输入你的名字'; return; }
   socket.emit('createRoom', { name });
 };
 
 $('btn-join').onclick = () => {
-  const name = $('input-name').value.trim() || '玩家';
+  const name = $('input-name').value.trim();
+  if (!name) { $('home-error').textContent = '请输入你的名字'; return; }
   const code = $('input-code').value.trim();
   if (!code) { $('home-error').textContent = '请输入房间码'; return; }
   socket.emit('joinRoom', { code, name });
