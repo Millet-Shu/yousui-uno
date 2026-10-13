@@ -86,9 +86,14 @@ function renderGame(state) {
   // 顶牌（万能牌边框显示当前选中的颜色）
   const top = state.topCard;
   const topEl = $('top-card');
-  const borderColor = (top.color === 'none') ? state.currentColor : top.color;
-  topEl.className = 'card ' + borderColor;
-  $('top-label').textContent = cardText(top);
+  if (top) {
+    const borderColor = (top.color === 'none') ? state.currentColor : top.color;
+    topEl.className = 'card ' + borderColor;
+    $('top-label').textContent = cardText(top);
+  } else {
+    topEl.className = 'card';
+    $('top-label').textContent = '?';
+  }
 
   // 对手（按位置分布：上、左、右）
   const oppEl = $('opponents');
