@@ -32,7 +32,7 @@ $('btn-addai').onclick = () => socket.emit('addAI');
 $('btn-start').onclick = () => socket.emit('startGame');
 $('btn-uno').onclick = () => socket.emit('callUno');
 $('btn-grab').onclick = () => socket.emit('grabLead');
-$('btn-restart').onclick = () => location.reload();
+$('btn-restart').onclick = () => socket.emit('restartGame');
 $('btn-endgame').onclick = () => location.reload();
 
 // ===== 服务器事件 =====

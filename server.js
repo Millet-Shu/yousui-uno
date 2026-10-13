@@ -543,6 +543,14 @@ io.on('connection', (socket) => {
     startGame(room);
   });
 
+  socket.on('restartGame', () => {
+    const room = currentRoom;
+    if (!room) return;
+    // 清理已完赛状态，重新开始
+    for (const p of room.players) { p.finished = false; p.rank = null; }
+    startGame(room);
+  });
+
   socket.on('addAI', () => {
     const room = currentRoom;
     if (!room || room.status !== 'waiting') return;
