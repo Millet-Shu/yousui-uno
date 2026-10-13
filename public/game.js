@@ -30,6 +30,8 @@ $('btn-join').onclick = () => {
 $('btn-leave').onclick = () => location.reload();
 $('btn-addai').onclick = () => socket.emit('addAI');
 $('btn-start').onclick = () => socket.emit('startGame');
+$('btn-uno').onclick = () => socket.emit('callUno');
+$('btn-report').onclick = () => socket.emit('reportUno');
 
 // ===== 服务器事件 =====
 socket.on('roomCreated', ({ code, playerId }) => {
@@ -115,6 +117,15 @@ function renderGame(state) {
     $('status-text').textContent = `${state.currentPlayerName} 面临 +${state.pendingDraw} 罚牌...`;
   } else {
     $('status-text').textContent = `等待 ${state.currentPlayerName} 出牌...`;
+  }
+
+  // 有岁按钮：手牌<=2张且没喊过时显示
+  const myHandCount = state.yourHand.length;
+  $('btn-uno').classList.toggle('hidden', !(myHandCount <= 2 && !state.myUnoCalled && state.status === 'playing'));
+  // 举报按钮：有人可以举报时显示
+  $('btn-report').classList.toggle('hidden', !state.pendingReport);
+  if (state.pendingReport) {
+    $('btn-report').textContent = `举报 ${state.pendingReport.playerName} 没喊有岁`;
   }
 
   // 日志

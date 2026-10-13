@@ -96,8 +96,10 @@ function createRoom() {
     currentIndex: 0,
     direction: 1,
     pendingDraw: 0,
-    status: 'waiting', // waiting | playing | over
-    wildPending: false, // 出了万能牌等选颜色
+    status: 'waiting',
+    wildPending: false,
+    unoCalled: {}, // playerId -> true，谁喊了有岁
+    pendingReport: null, // { playerId } 可以被举报
     log: []
   });
   return rooms.get(code);
@@ -133,6 +135,8 @@ function publicRoomState(room, selfPlayer) {
     direction: room.direction,
     pendingDraw: room.pendingDraw,
     wildPending: room.wildPending,
+    pendingReport: room.pendingReport,
+    myUnoCalled: !!room.unoCalled[selfPlayer.id],
     log: room.log.slice(-20)
   };
 }
@@ -219,6 +223,13 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   player.hand.splice(cardIndex, 1);
   room.discardPile.push(card);
   room.topCard = card;
+
+  // 没喊有岁就出到剩<=1张，可以被举报
+  if (player.hand.length <= 1 && !room.unoCalled[player.id]) {
+    room.pendingReport = { playerId: player.id, playerName: player.name };
+  } else {
+    room.pendingReport = null;
+  }
 
   handleCardEffect(room, player, card, chosenColor);
 }
@@ -487,8 +498,28 @@ io.on('connection', (socket) => {
     broadcastRoom(room);
   });
 
-  socket.on('playCard', ({ cardIndex }) => {
-    if (currentRoom) playCard(currentRoom, currentPlayerId, cardIndex);
+  socket.on('playCard', ({ cardIndex, chosenColor }) => {
+    if (currentRoom) playCard(currentRoom, currentPlayerId, cardIndex, chosenColor);
+  });
+
+  socket.on('callUno', () => {
+    if (currentRoom && currentPlayerId) {
+      currentRoom.unoCalled[currentPlayerId] = true;
+      addLog(currentRoom, `${currentRoom.players.find(p=>p.id===currentPlayerId)?.name || '玩家'} 喊了"有岁"`);
+      broadcastRoom(currentRoom);
+    }
+  });
+
+  socket.on('reportUno', () => {
+    if (!currentRoom || !currentRoom.pendingReport) return;
+    const target = currentRoom.players.find(p => p.id === currentRoom.pendingReport.playerId);
+    if (target) {
+      const drawn = drawCards(currentRoom, 2);
+      target.hand.push(...drawn);
+      addLog(currentRoom, `举报成功！${target.name} 被罚摸2张`);
+    }
+    currentRoom.pendingReport = null;
+    broadcastRoom(currentRoom);
   });
 
   socket.on('chooseColor', ({ color }) => {
