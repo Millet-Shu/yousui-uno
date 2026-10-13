@@ -165,11 +165,9 @@ document.querySelectorAll('.color-btn').forEach(btn => {
     const color = btn.dataset.color;
     $('color-modal').classList.add('hidden');
     if (window._pendingCardIndex !== undefined) {
-      // 出万能牌
-      socket.emit('playCard', { cardIndex: window._pendingCardIndex });
+      // 出万能牌，直接带颜色一起发
+      socket.emit('playCard', { cardIndex: window._pendingCardIndex, chosenColor: color });
       window._pendingCardIndex = undefined;
-      // 选颜色
-      socket.emit('chooseColor', { color });
     } else {
       socket.emit('chooseColor', { color });
     }

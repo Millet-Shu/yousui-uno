@@ -206,7 +206,6 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
     resolveWildColor(room, playerId, chosenColor);
     return;
   }
-  if (room.pendingDraw > 0) return; // 该摸牌跳过
 
   const card = player.hand[cardIndex];
   if (!card) return;
