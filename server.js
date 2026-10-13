@@ -420,8 +420,10 @@ io.on('connection', (socket) => {
   let currentPlayerId = null;
 
   socket.on('createRoom', ({ name }) => {
+    name = (name || '').trim();
+    if (!name) { socket.emit('errorMsg', '请输入名字'); return; }
     const room = createRoom();
-    const player = { id: socket.id + '_' + Date.now(), name: name || '玩家', socketId: socket.id, isAI: false, hand: [] };
+    const player = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id, isAI: false, hand: [] };
     room.players.push(player);
     currentRoom = room;
     currentPlayerId = player.id;
@@ -431,12 +433,14 @@ io.on('connection', (socket) => {
 
   socket.on('joinRoom', ({ code, name }) => {
     code = (code || '').toUpperCase().trim();
+    name = (name || '').trim();
+    if (!name) { socket.emit('errorMsg', '请输入名字'); return; }
     const room = rooms.get(code);
     if (!room) { socket.emit('errorMsg', '房间不存在'); return; }
     if (room.status !== 'waiting') { socket.emit('errorMsg', '游戏已开始'); return; }
     if (room.players.length >= 4) { socket.emit('errorMsg', '房间已满'); return; }
 
-    const player = { id: socket.id + '_' + Date.now(), name: name || '玩家', socketId: socket.id, isAI: false, hand: [] };
+    const player = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id, isAI: false, hand: [] };
     room.players.push(player);
     currentRoom = room;
     currentPlayerId = player.id;
@@ -449,14 +453,6 @@ io.on('connection', (socket) => {
     const room = currentRoom;
     if (!room) return;
     if (room.players.length < 2) { socket.emit('errorMsg', '至少需要2人（可加AI）'); return; }
-    // 人不够补 AI 到4人
-    while (room.players.length < 4) {
-      room.players.push({
-        id: 'ai_' + Date.now() + '_' + Math.random(),
-        name: 'AI-' + (room.players.length + 1),
-        socketId: null, isAI: true, hand: []
-      });
-    }
     startGame(room);
   });
 
