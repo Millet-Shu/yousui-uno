@@ -193,6 +193,13 @@ function startGame(room) {
 
   addLog(room, `游戏开始！抢"有岁"先手！`);
   broadcastRoom(room);
+
+  // AI 自动抢先手
+  setTimeout(() => {
+    if (room.status !== 'grabbing') return;
+    const ai = room.players.find(p => p.isAI);
+    if (ai) grabLead(room, ai.id);
+  }, 2000);
 }
 
 // 抢先手
