@@ -115,6 +115,7 @@ input:focus { border-color: #6c7bff; }
 .opponent .name { font-size: 14px; }
 .opponent .count { font-size: 12px; color: #aaa; }
 .opponent .penalty { display: inline-block; margin-top: 4px; padding: 2px 10px; background: #e03030; color: #fff; border-radius: 12px; font-size: 14px; font-weight: bold; }
+.opponent .rank { margin-top: 4px; padding: 2px 8px; background: #ffd040; color: #333; border-radius: 10px; font-size: 12px; font-weight: bold; }
 
 #center-area {
   position: absolute;

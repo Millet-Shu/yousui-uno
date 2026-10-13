@@ -81,10 +81,11 @@ function cardText(c) {
 }
 
 function renderGame(state) {
-  // 顶牌
+  // 顶牌（万能牌边框显示当前选中的颜色）
   const top = state.topCard;
   const topEl = $('top-card');
-  topEl.className = 'card ' + (top.color || 'none');
+  const borderColor = (top.color === 'none') ? state.currentColor : top.color;
+  topEl.className = 'card ' + borderColor;
   $('top-label').textContent = cardText(top);
 
   // 对手
@@ -94,7 +95,8 @@ function renderGame(state) {
     const div = document.createElement('div');
     div.className = 'opponent' + (p.isCurrent ? ' current' : '');
     const penalty = (p.isCurrent && state.pendingDraw > 0) ? `<div class="penalty">+${state.pendingDraw}</div>` : '';
-    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}</div><div class="count">${p.handCount} 张</div>${penalty}`;
+    const rankLabel = p.finished ? `<div class="rank">第 ${p.rank} 名</div>` : '';
+    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}</div><div class="count">${p.handCount} 张</div>${penalty}${rankLabel}`;
     oppEl.appendChild(div);
   });
 

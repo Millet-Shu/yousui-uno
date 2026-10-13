@@ -121,6 +121,8 @@ function publicRoomState(room, selfPlayer) {
       name: p.name,
       isAI: p.isAI,
       handCount: p.hand.length,
+      finished: !!p.finished,
+      rank: p.rank || null,
       isYou: p.id === selfPlayer.id,
       isCurrent: room.players[room.currentIndex] && room.players[room.currentIndex].id === p.id
     })),
@@ -140,9 +142,10 @@ function addLog(room, msg) {
   console.log(`[${room.code}] ${msg}`);
 }
 
-function nextIndex(room, offset = 1) {
+function nextIndex(room, offset = 1, fromIdx = null) {
   const n = room.players.length;
-  return (room.currentIndex + room.direction * offset + n) % n;
+  const base = fromIdx === null ? room.currentIndex : fromIdx;
+  return (base + room.direction * offset + n * 100) % n;
 }
 
 function drawCards(room, n) {
@@ -166,7 +169,7 @@ function startGame(room) {
   room.drawPile = shuffle(createDeck());
   room.discardPile = [];
 
-  for (const p of room.players) p.hand = [];
+  for (const p of room.players) { p.hand = []; p.finished = false; p.rank = null; }
 
   // 每人 7 张
   for (let i = 0; i < 7; i++) {
@@ -339,15 +342,30 @@ function drawCard(room, playerId) {
 }
 
 function advance(room) {
-  room.currentIndex = nextIndex(room, 1);
+  let next = nextIndex(room, 1);
+  let guard = 0;
+  while (room.players[next] && room.players[next].finished && guard < room.players.length) {
+    next = nextIndex(room, 1, next);
+    guard++;
+  }
+  room.currentIndex = next;
 }
 
 function checkWin(room) {
   for (const p of room.players) {
-    if (p.hand.length === 0) {
-      room.status = 'over';
-      addLog(room, `🏆 ${p.name} 获胜！`);
-      return;
+    if (p.hand.length === 0 && !p.finished) {
+      p.finished = true;
+      p.rank = room.players.filter(x => x.finished).length;
+      addLog(room, `🏆 ${p.name} 第 ${p.rank} 名！`);
+    }
+  }
+  // 只剩一个未完成玩家，游戏结束
+  const remaining = room.players.filter(p => !p.finished);
+  if (remaining.length <= 1 && room.status === 'playing') {
+    room.status = 'over';
+    if (remaining.length === 1) {
+      remaining[0].rank = room.players.filter(x => x.finished).length + 1;
+      addLog(room, `🏆 ${remaining[0].name} 第 ${remaining[0].rank} 名！`);
     }
   }
 }
