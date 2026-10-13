@@ -32,6 +32,8 @@ $('btn-addai').onclick = () => socket.emit('addAI');
 $('btn-start').onclick = () => socket.emit('startGame');
 $('btn-uno').onclick = () => socket.emit('callUno');
 $('btn-grab').onclick = () => socket.emit('grabLead');
+$('btn-restart').onclick = () => location.reload();
+$('btn-endgame').onclick = () => location.reload();
 
 // ===== 服务器事件 =====
 socket.on('roomCreated', ({ code, playerId }) => {
@@ -138,9 +140,9 @@ function renderGame(state) {
     $('status-text').textContent = `等待 ${state.currentPlayerName} 出牌...`;
   }
 
-  // 有岁按钮：手牌刚好2张时显示
+  // 有岁按钮：手牌刚好2张且轮到自己才显示
   const myHandCount = state.yourHand.length;
-  $('btn-uno').classList.toggle('hidden', !(myHandCount === 2 && state.status === 'playing'));
+  $('btn-uno').classList.toggle('hidden', !(myHandCount === 2 && myTurn && state.status === 'playing'));
   // 按下状态
   if (state.myUnoCalled) {
     $('btn-uno').textContent = '✓ 有岁（再点取消）';
@@ -151,6 +153,10 @@ function renderGame(state) {
   }
   // 抢先手按钮
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing');
+  // 结束/重开按钮（游戏进行中显示）
+  const inGame = state.status === 'playing' || state.status === 'grabbing' || state.status === 'over';
+  $('btn-restart').classList.toggle('hidden', !inGame);
+  $('btn-endgame').classList.toggle('hidden', !inGame);
   // 牌组数量
   $('draw-count').textContent = state.drawPileCount || 0;
 
