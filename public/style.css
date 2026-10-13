@@ -1,5 +1,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+.hidden { display: none !important; }
+
 :root {
   --color-red: #e04040;
   --color-yellow: #e8d020;

@@ -152,10 +152,7 @@ function renderGame(state) {
   // 抢先手按钮
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing');
   // 牌组数量
-  const dp = $('draw-pile');
-  let countEl = dp.querySelector('.count');
-  if (!countEl) { countEl = document.createElement('span'); countEl.className = 'count'; dp.appendChild(countEl); }
-  countEl.textContent = state.drawPileCount || 0;
+  $('draw-count').textContent = state.drawPileCount || 0;
 
   // 日志
   $('game-log').innerHTML = state.log.map(l => `<div>${l}</div>`).join('');
