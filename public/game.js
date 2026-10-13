@@ -90,12 +90,13 @@ function renderGame(state) {
   topEl.className = 'card ' + borderColor;
   $('top-label').textContent = cardText(top);
 
-  // 对手
+  // 对手（按位置分布：上、左、右）
   const oppEl = $('opponents');
   oppEl.innerHTML = '';
-  state.players.filter(p => !p.isYou).forEach(p => {
+  const positions = ['pos-top', 'pos-left', 'pos-right'];
+  state.players.filter(p => !p.isYou).forEach((p, i) => {
     const div = document.createElement('div');
-    div.className = 'opponent' + (p.isCurrent ? ' current' : '');
+    div.className = 'opponent ' + (positions[i] || 'pos-top') + (p.isCurrent ? ' current' : '');
     const penalty = (p.isCurrent && state.pendingDraw > 0) ? `<div class="penalty">+${state.pendingDraw}</div>` : '';
     const rankLabel = p.finished ? `<div class="rank">第 ${p.rank} 名</div>` : '';
     div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}</div><div class="count">${p.handCount} 张</div>${penalty}${rankLabel}`;
