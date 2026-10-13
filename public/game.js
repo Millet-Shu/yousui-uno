@@ -83,15 +83,23 @@ function cardText(c) {
 }
 
 function renderGame(state) {
-  // 顶牌（万能牌边框显示当前选中的颜色）
+  // 顶牌（万能牌只边框显示选中颜色）
   const top = state.topCard;
   const topEl = $('top-card');
   if (top) {
-    const borderColor = (top.color === 'none') ? state.currentColor : top.color;
-    topEl.className = 'card ' + borderColor;
+    if (top.color === 'none') {
+      // 万能牌：背景保持深色，边框显示选中颜色
+      topEl.className = 'card wild';
+      const c = state.currentColor;
+      topEl.style.boxShadow = c ? `0 0 0 4px var(--color-${c})` : 'none';
+    } else {
+      topEl.className = 'card ' + top.color;
+      topEl.style.boxShadow = 'none';
+    }
     $('top-label').textContent = cardText(top);
   } else {
     topEl.className = 'card';
+    topEl.style.boxShadow = 'none';
     $('top-label').textContent = '?';
   }
 
