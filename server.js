@@ -47,10 +47,7 @@ function isWild(c) { return c.type === T.WILD || c.type === T.WILD_DRAW_FOUR; }
 
 function isPlayable(c, topCard, currentColor) {
   if (isWild(c)) return true;
-  if (c.color === currentColor) return true;
-  if (c.type === T.NUMBER && topCard.type === T.NUMBER && c.value === topCard.value) return true;
-  if (c.type === topCard.type) return true;
-  return false;
+  return c.color === currentColor;
 }
 
 function cardName(c) {
@@ -258,14 +255,13 @@ function handleCardEffect(room, player, card, chosenColor) {
   checkWin(room);
   if (room.status === 'over') { broadcastRoom(room); return; }
 
-  // 如果有 pendingDraw，下一个人自动摸牌跳过
+  // 如果有 pendingDraw，下一个人摸牌后正常轮到他出牌（不跳过）
   if (room.pendingDraw > 0 && room.players[room.currentIndex]) {
     const next = room.players[room.currentIndex];
     const drawn = drawCards(room, room.pendingDraw);
     next.hand.push(...drawn);
-    addLog(room, `${next.name} 被罚摸 ${drawn.length} 张，跳过`);
+    addLog(room, `${next.name} 摸了 ${drawn.length} 张`);
     room.pendingDraw = 0;
-    advance(room);
   }
 
   broadcastRoom(room);
