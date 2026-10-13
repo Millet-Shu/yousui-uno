@@ -31,7 +31,6 @@ $('btn-leave').onclick = () => location.reload();
 $('btn-addai').onclick = () => socket.emit('addAI');
 $('btn-start').onclick = () => socket.emit('startGame');
 $('btn-uno').onclick = () => socket.emit('callUno');
-$('btn-report').onclick = () => socket.emit('reportUno');
 
 // ===== 服务器事件 =====
 socket.on('roomCreated', ({ code, playerId }) => {
