@@ -91,7 +91,8 @@ function renderGame(state) {
   state.players.filter(p => !p.isYou).forEach(p => {
     const div = document.createElement('div');
     div.className = 'opponent' + (p.isCurrent ? ' current' : '');
-    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}</div><div class="count">${p.handCount} 张</div>`;
+    const penalty = (p.isCurrent && state.pendingDraw > 0) ? `<div class="penalty">+${state.pendingDraw}</div>` : '';
+    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}</div><div class="count">${p.handCount} 张</div>${penalty}`;
     oppEl.appendChild(div);
   });
 
@@ -102,8 +103,12 @@ function renderGame(state) {
   } else if (state.wildPending && myTurn) {
     $('status-text').textContent = '请选择颜色';
     $('color-modal').classList.remove('hidden');
+  } else if (myTurn && state.pendingDraw > 0) {
+    $('status-text').textContent = `罚牌 +${state.pendingDraw}：出+2/+4叠加，否则自动摸牌`;
   } else if (myTurn) {
     $('status-text').textContent = '轮到你出牌！';
+  } else if (state.pendingDraw > 0) {
+    $('status-text').textContent = `${state.currentPlayerName} 面临 +${state.pendingDraw} 罚牌...`;
   } else {
     $('status-text').textContent = `等待 ${state.currentPlayerName} 出牌...`;
   }
@@ -129,7 +134,11 @@ function renderGame(state) {
 
   sorted.forEach(card => {
     const div = document.createElement('div');
-    const playable = myTurn && !state.wildPending && state.status === 'playing';
+    let playable = myTurn && !state.wildPending && state.status === 'playing';
+    // 有罚牌时只有+2/+4能出
+    if (playable && state.pendingDraw > 0) {
+      playable = (card.type === 3 || card.type === 5);
+    }
     div.className = 'hand-card ' + (card.color || 'none');
     div.textContent = cardText(card);
 
@@ -137,7 +146,6 @@ function renderGame(state) {
       div.onclick = () => {
         const realIndex = state.yourHand.indexOf(card);
         if (card.type === 4 || card.type === 5) {
-          // 万能牌：先选颜色
           window._pendingCardIndex = realIndex;
           $('color-modal').classList.remove('hidden');
         } else {

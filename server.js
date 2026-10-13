@@ -45,9 +45,16 @@ function shuffle(arr, rng = Math.random) {
 
 function isWild(c) { return c.type === T.WILD || c.type === T.WILD_DRAW_FOUR; }
 
-function isPlayable(c, topCard, currentColor) {
+function isPlayable(c, topCard, currentColor, pendingDraw) {
+  // 有叠加罚牌时，只有+2/+4能出
+  if (pendingDraw > 0) {
+    return c.type === T.DRAW_TWO || c.type === T.WILD_DRAW_FOUR;
+  }
   if (isWild(c)) return true;
-  return c.color === currentColor;
+  if (c.color === currentColor) return true;
+  // 数字牌：同数字不同色也能出
+  if (c.type === T.NUMBER && topCard.type === T.NUMBER && c.value === topCard.value) return true;
+  return false;
 }
 
 function cardName(c) {
@@ -203,7 +210,7 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
 
   const card = player.hand[cardIndex];
   if (!card) return;
-  if (!isPlayable(card, room.topCard, room.currentColor)) return;
+  if (!isPlayable(card, room.topCard, room.currentColor, room.pendingDraw)) return;
 
   player.hand.splice(cardIndex, 1);
   room.discardPile.push(card);
@@ -238,15 +245,21 @@ function handleCardEffect(room, player, card, chosenColor) {
       advance(room);
       break;
     case T.WILD:
-    case T.WILD_DRAW_FOUR:
-      if (card.type === T.WILD_DRAW_FOUR) room.pendingDraw += 4;
       if (chosenColor) {
         room.currentColor = chosenColor;
-        if (card.type === T.WILD_DRAW_FOUR) addLog(room, `${player.name} 下家摸4张`);
         addLog(room, `${player.name} 指定颜色 ${colorName(chosenColor)}`);
         advance(room);
       } else {
-        // 等客户端选颜色
+        room.wildPending = true;
+      }
+      break;
+    case T.WILD_DRAW_FOUR:
+      room.pendingDraw += 4;
+      if (chosenColor) {
+        room.currentColor = chosenColor;
+        addLog(room, `${player.name} 指定颜色 ${colorName(chosenColor)}`);
+        advance(room);
+      } else {
         room.wildPending = true;
       }
       break;
@@ -255,21 +268,31 @@ function handleCardEffect(room, player, card, chosenColor) {
   checkWin(room);
   if (room.status === 'over') { broadcastRoom(room); return; }
 
-  // 如果有 pendingDraw，下一个人摸牌后正常轮到他出牌（不跳过）
-  if (room.pendingDraw > 0 && room.players[room.currentIndex]) {
-    const next = room.players[room.currentIndex];
-    const drawn = drawCards(room, room.pendingDraw);
-    next.hand.push(...drawn);
-    addLog(room, `${next.name} 摸了 ${drawn.length} 张`);
-    room.pendingDraw = 0;
-  }
+  // 在等选颜色时不继续
+  if (room.wildPending) { broadcastRoom(room); return; }
+
+  // 当前玩家如果没有+2/+4可叠加，自动摸罚牌
+  checkPendingDraw(room);
 
   broadcastRoom(room);
 
-  // 下一个是 AI？
   const next = room.players[room.currentIndex];
   if (next && next.isAI && room.status === 'playing') {
     setTimeout(() => aiTurn(room), 1000);
+  }
+}
+
+// 检查当前玩家是否需要自动摸罚牌（手里没有+2/+4时）
+function checkPendingDraw(room) {
+  if (room.pendingDraw <= 0) return;
+  const player = room.players[room.currentIndex];
+  if (!player) return;
+  const canStack = player.hand.some(c => c.type === T.DRAW_TWO || c.type === T.WILD_DRAW_FOUR);
+  if (!canStack) {
+    const drawn = drawCards(room, room.pendingDraw);
+    player.hand.push(...drawn);
+    addLog(room, `${player.name} 摸了 ${drawn.length} 张`);
+    room.pendingDraw = 0;
   }
 }
 
@@ -280,6 +303,11 @@ function resolveWildColor(room, playerId, color) {
   room.wildPending = false;
   addLog(room, `${player.name} 指定颜色 ${colorName(color)}`);
   advance(room);
+
+  checkWin(room);
+  if (room.status === 'over') { broadcastRoom(room); return; }
+
+  checkPendingDraw(room);
   broadcastRoom(room);
 
   const next = room.players[room.currentIndex];
@@ -346,12 +374,10 @@ function aiTurn(room) {
     return;
   }
 
-  if (room.pendingDraw > 0) return; // 会被自动处理
-
   // 找可出的牌
   const playable = [];
   for (let i = 0; i < player.hand.length; i++) {
-    if (isPlayable(player.hand[i], room.topCard, room.currentColor)) playable.push(i);
+    if (isPlayable(player.hand[i], room.topCard, room.currentColor, room.pendingDraw)) playable.push(i);
   }
 
   if (playable.length === 0) {
