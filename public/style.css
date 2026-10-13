@@ -113,6 +113,9 @@ input:focus { border-color: #6c7bff; }
 .opponent .penalty { display: inline-block; margin-top: 4px; padding: 2px 10px; background: #e03030; color: #fff; border-radius: 12px; font-size: 14px; font-weight: bold; }
 .opponent .rank { margin-top: 4px; padding: 2px 8px; background: #ffd040; color: #333; border-radius: 10px; font-size: 12px; font-weight: bold; }
 .btn-uno { position: absolute; bottom: 160px; left: 50%; transform: translateX(-50%); padding: 6px 20px; background: #ffd040; color: #333; border: none; border-radius: 16px; font-size: 14px; font-weight: bold; cursor: pointer; z-index: 10; }
+.btn-grab { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); padding: 12px 30px; background: #e04040; color: #fff; border: none; border-radius: 20px; font-size: 18px; font-weight: bold; cursor: pointer; z-index: 10; animation: blink 1s infinite; }
+#draw-pile { position: relative; }
+#draw-pile .count { position: absolute; bottom: 4px; right: 4px; font-size: 11px; color: #fff; background: rgba(0,0,0,0.5); padding: 1px 6px; border-radius: 8px; }
 .btn-uno:hover { background: #ffe070; }
 .opponent .report-btn { display: block; margin: 4px auto 0; padding: 3px 10px; background: #e03030; color: #fff; border: none; border-radius: 10px; font-size: 12px; cursor: pointer; animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: 0.6; } }

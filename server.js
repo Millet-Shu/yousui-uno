@@ -137,6 +137,7 @@ function publicRoomState(room, selfPlayer) {
     wildPending: room.wildPending,
     pendingReport: room.pendingReport,
     myUnoCalled: !!room.unoCalled[selfPlayer.id],
+    drawPileCount: room.drawPile.length,
     log: room.log.slice(-20)
   };
 }
@@ -169,11 +170,11 @@ function drawCards(room, n) {
 }
 
 function startGame(room) {
-  room.status = 'playing';
+  room.status = 'grabbing'; // 抢先手阶段
   room.drawPile = shuffle(createDeck());
   room.discardPile = [];
 
-  for (const p of room.players) { p.hand = []; p.finished = false; p.rank = null; }
+  for (const p of room.players) { p.hand = []; p.finished = false; p.rank = null; p.unoCalled = false; }
 
   // 每人 7 张
   for (let i = 0; i < 7; i++) {
@@ -183,26 +184,69 @@ function startGame(room) {
     }
   }
 
-  // 翻起始牌（数字牌为止）
-  let starter;
-  do {
-    starter = room.drawPile.pop();
-  } while (starter && (isWild(starter) || starter.type !== T.NUMBER));
-
-  room.discardPile.push(starter);
-  room.topCard = starter;
-  room.currentColor = starter.color;
+  room.currentColor = null;
   room.currentIndex = 0;
   room.direction = 1;
   room.pendingDraw = 0;
   room.wildPending = false;
   room.log = [];
 
-  addLog(room, `游戏开始！起始牌 ${cardName(starter)}`);
-
-  // 如果第一个是 AI，触发
-  setTimeout(() => aiTurn(room), 800);
+  addLog(room, `游戏开始！抢"有岁"先手！`);
   broadcastRoom(room);
+}
+
+// 抢先手
+function grabLead(room, playerId) {
+  if (room.status !== 'grabbing') return;
+  room.currentIndex = room.players.findIndex(p => p.id === playerId);
+  if (room.currentIndex < 0) return;
+
+  // 翻起始牌
+  let starter = room.drawPile.pop();
+  // 如果是万能牌，洗回去重翻
+  let guard = 0;
+  while (starter && isWild(starter) && guard < 20) {
+    room.drawPile.unshift(starter);
+    starter = room.drawPile.pop();
+    guard++;
+  }
+
+  room.discardPile.push(starter);
+  room.topCard = starter;
+  room.currentColor = starter.color;
+  room.status = 'playing';
+
+  addLog(room, `${room.players[room.currentIndex].name} 抢到先手！起始牌 ${cardName(starter)}`);
+
+  // 起始牌是加牌，加给先手
+  if (starter.type === T.DRAW_TWO) {
+    room.pendingDraw += 2;
+    const drawn = drawCards(room, 2);
+    room.players[room.currentIndex].hand.push(...drawn);
+    addLog(room, `${room.players[room.currentIndex].name} 起始罚摸2张`);
+    room.pendingDraw = 0;
+  } else if (starter.type === T.WILD_DRAW_FOUR) {
+    const drawn = drawCards(room, 4);
+    room.players[room.currentIndex].hand.push(...drawn);
+    addLog(room, `${room.players[room.currentIndex].name} 起始罚摸4张`);
+  }
+
+  // 起始牌是禁止/反转，应用效果
+  if (starter.type === T.SKIP) {
+    addLog(room, `起始禁止，下家跳过`);
+    advance(room);
+  } else if (starter.type === T.REVERSE) {
+    room.direction *= -1;
+    addLog(room, `起始反转，方向反转`);
+    advance(room);
+  }
+
+  broadcastRoom(room);
+
+  const next = room.players[room.currentIndex];
+  if (next && next.isAI) {
+    setTimeout(() => aiTurn(room), 1000);
+  }
 }
 
 // 出牌（cardIndex 为玩家手牌中的下标）
@@ -496,6 +540,10 @@ io.on('connection', (socket) => {
       socketId: null, isAI: true, hand: []
     });
     broadcastRoom(room);
+  });
+
+  socket.on('grabLead', () => {
+    if (currentRoom) grabLead(currentRoom, currentPlayerId);
   });
 
   socket.on('playCard', ({ cardIndex, chosenColor }) => {

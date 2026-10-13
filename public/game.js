@@ -31,6 +31,7 @@ $('btn-leave').onclick = () => location.reload();
 $('btn-addai').onclick = () => socket.emit('addAI');
 $('btn-start').onclick = () => socket.emit('startGame');
 $('btn-uno').onclick = () => socket.emit('callUno');
+$('btn-grab').onclick = () => socket.emit('grabLead');
 
 // ===== 服务器事件 =====
 socket.on('roomCreated', ({ code, playerId }) => {
@@ -109,6 +110,8 @@ function renderGame(state) {
   const myTurn = state.players.find(p => p.isYou && p.isCurrent);
   if (state.status === 'over') {
     $('status-text').textContent = '游戏结束！';
+  } else if (state.status === 'grabbing') {
+    $('status-text').textContent = '抢"有岁"先手！点下面按钮！';
   } else if (state.wildPending && myTurn) {
     $('status-text').textContent = '请选择颜色';
     $('color-modal').classList.remove('hidden');
@@ -125,6 +128,13 @@ function renderGame(state) {
   // 有岁按钮：手牌<=2张且没喊过时显示
   const myHandCount = state.yourHand.length;
   $('btn-uno').classList.toggle('hidden', !(myHandCount <= 2 && !state.myUnoCalled && state.status === 'playing'));
+  // 抢先手按钮
+  $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing');
+  // 牌组数量
+  const dp = $('draw-pile');
+  let countEl = dp.querySelector('.count');
+  if (!countEl) { countEl = document.createElement('span'); countEl.className = 'count'; dp.appendChild(countEl); }
+  countEl.textContent = state.drawPileCount || 0;
 
   // 日志
   $('game-log').innerHTML = state.log.map(l => `<div>${l}</div>`).join('');
