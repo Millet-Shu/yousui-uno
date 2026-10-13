@@ -268,11 +268,17 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   room.discardPile.push(card);
   room.topCard = card;
 
-  // 没喊有岁就出到剩<=1张，可以被举报
-  if (player.hand.length <= 1 && !room.unoCalled[player.id]) {
+  // 没喊有岁就出到剩<=1张，可以被举报（游戏进行中才行）
+  if (room.status === 'playing' && player.hand.length <= 1 && !room.unoCalled[player.id]) {
     room.pendingReport = { playerId: player.id, playerName: player.name };
   } else {
     room.pendingReport = null;
+  }
+
+  // 出完牌后才显示喊了有岁
+  if (room.unoCalled[player.id] && player.hand.length <= 2) {
+    addLog(room, `${player.name} 喊了"有岁"`);
+    room.unoCalled[player.id] = false; // 出完牌重置
   }
 
   handleCardEffect(room, player, card, chosenColor);
@@ -552,14 +558,13 @@ io.on('connection', (socket) => {
 
   socket.on('callUno', () => {
     if (currentRoom && currentPlayerId) {
-      currentRoom.unoCalled[currentPlayerId] = true;
-      addLog(currentRoom, `${currentRoom.players.find(p=>p.id===currentPlayerId)?.name || '玩家'} 喊了"有岁"`);
+      currentRoom.unoCalled[currentPlayerId] = !currentRoom.unoCalled[currentPlayerId];
       broadcastRoom(currentRoom);
     }
   });
 
   socket.on('reportUno', () => {
-    if (!currentRoom || !currentRoom.pendingReport) return;
+    if (!currentRoom || !currentRoom.pendingReport || currentRoom.status !== 'playing') return;
     const target = currentRoom.players.find(p => p.id === currentRoom.pendingReport.playerId);
     if (target) {
       const drawn = drawCards(currentRoom, 2);

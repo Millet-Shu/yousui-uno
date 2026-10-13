@@ -125,9 +125,17 @@ function renderGame(state) {
     $('status-text').textContent = `等待 ${state.currentPlayerName} 出牌...`;
   }
 
-  // 有岁按钮：手牌<=2张且没喊过时显示
+  // 有岁按钮：手牌刚好2张时显示
   const myHandCount = state.yourHand.length;
-  $('btn-uno').classList.toggle('hidden', !(myHandCount <= 2 && !state.myUnoCalled && state.status === 'playing'));
+  $('btn-uno').classList.toggle('hidden', !(myHandCount === 2 && state.status === 'playing'));
+  // 按下状态
+  if (state.myUnoCalled) {
+    $('btn-uno').textContent = '✓ 有岁（再点取消）';
+    $('btn-uno').style.background = '#30b050';
+  } else {
+    $('btn-uno').textContent = '喊"有岁"';
+    $('btn-uno').style.background = '';
+  }
   // 抢先手按钮
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing');
   // 牌组数量
