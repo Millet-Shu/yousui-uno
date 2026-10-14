@@ -189,6 +189,7 @@ function startGame(room) {
   room.status = 'grabbing'; // 抢先手阶段
   room.drawPile = shuffle(createDeck());
   room.discardPile = [];
+  room.topCard = null;
 
   for (const p of room.players) { p.hand = []; p.finished = false; p.rank = null; p.unoCalled = false; }
 
