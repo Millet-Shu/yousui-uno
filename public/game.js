@@ -139,6 +139,8 @@ socket.on('roomUpdate', (state) => {
 
 // ===== 渲染房间等待页 =====
 function renderLobby(state) {
+  // 显示房间码
+  $('lobby-code').textContent = state.code || '';
   const list = $('lobby-players');
   list.innerHTML = `<div class="section-title">玩家 <span class="count">${state.players.length}/${state.maxPlayers}</span></div>`;
   state.players.forEach((p, i) => {
@@ -308,12 +310,13 @@ function renderGame(state) {
     gameSpList.innerHTML = '';
     const spectators = (state.spectators || []).filter(s => s !== null);
     if (spectators.length === 0) {
-      gameSpList.innerHTML = '<div style="color:#666;font-size:12px;">暂无观战者</div>';
+      gameSpList.innerHTML = '<div style="color:#666;font-size:12px;">暂无</div>';
     } else {
       spectators.forEach(s => {
         const div = document.createElement('div');
-        div.className = 'game-spectator-item';
-        div.innerHTML = `<div class="game-spectator-avatar">${s.name[0]}</div><div class="game-spectator-name">${s.name}</div>`;
+        div.className = 'game-spectator-avatar';
+        div.textContent = s.name[0];
+        div.title = s.name;
         gameSpList.appendChild(div);
       });
     }
