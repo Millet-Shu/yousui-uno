@@ -157,13 +157,22 @@ function renderGame(state) {
     $('top-label').textContent = '?';
   }
 
-  // 对手（按位置分布：上、左、右，显示手牌背面）
+  // 对手（按角度均匀分布在圆周上，玩家在底部）
   const oppEl = $('opponents');
   oppEl.innerHTML = '';
-  const positions = ['pos-top', 'pos-left', 'pos-right'];
-  state.players.filter(p => !p.isYou).forEach((p, i) => {
+  const opponents = state.players.filter(p => !p.isYou);
+  const n = opponents.length;
+  opponents.forEach((p, i) => {
+    // 从底部(270°)开始，逆时针均匀分布
+    const angle = 270 - (360 / (n + 1)) * (i + 1);
+    const rad = angle * Math.PI / 180;
+    const x = 50 + 38 * Math.cos(rad);  // 百分比
+    const y = 50 + 38 * Math.sin(rad);
     const div = document.createElement('div');
-    div.className = 'opponent ' + (positions[i] || 'pos-top') + (p.isCurrent ? ' current' : '');
+    div.className = 'opponent ' + (p.isCurrent ? ' current' : '');
+    div.style.left = x + '%';
+    div.style.top = y + '%';
+    div.style.transform = 'translate(-50%, -50%)';
     const penalty = (p.isCurrent && state.pendingDraw > 0) ? `<div class="penalty">+${state.pendingDraw}</div>` : '';
     const rankLabel = p.finished ? `<div class="rank">第 ${p.rank} 名</div>` : '';
     const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id)

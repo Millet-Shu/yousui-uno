@@ -619,6 +619,8 @@ io.on('connection', (socket) => {
       const sp = room.spectators.splice(idx, 1)[0];
       room.players.push({ id: sp.id, name: sp.name, socketId: socket.id, isAI: false, hand: [] });
       addLog(room, `${sp.name} 从观战席加入游戏`);
+      currentPlayerId = sp.id;
+      socket.emit('roomJoined', { code: room.code, playerId: sp.id });
       broadcastRoom(room);
     }
   });
