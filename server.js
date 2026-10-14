@@ -373,9 +373,6 @@ function handleCardEffect(room, player, card, chosenColor) {
   // 在等选颜色时不继续
   if (room.wildPending) { broadcastRoom(room); return; }
 
-  // 当前玩家如果没有+2/+4可叠加，自动摸罚牌
-  checkPendingDraw(room);
-
   broadcastRoom(room);
 
   const next = room.players[room.currentIndex];
@@ -409,7 +406,6 @@ function resolveWildColor(room, playerId, color) {
   checkWin(room);
   if (room.status === 'over') { broadcastRoom(room); return; }
 
-  checkPendingDraw(room);
   broadcastRoom(room);
 
   const next = room.players[room.currentIndex];
