@@ -3,6 +3,7 @@ const socket = io();
 
 let myPlayerId = localStorage.getItem('uno_playerId') || null;
 let myRoomCode = localStorage.getItem('uno_roomCode') || null;
+let leftRoom = false;  // 离开房间标志
 
 // 页面加载时尝试重连
 if (myPlayerId) {
@@ -65,6 +66,7 @@ $('btn-leave-room').onclick = () => {
     localStorage.clear();
     myPlayerId = null;
     myRoomCode = null;
+    leftRoom = true;  // 标记已离开
     showScreen('home');
   });
 };
@@ -118,6 +120,7 @@ socket.on('errorMsg', (msg) => {
 });
 
 socket.on('roomUpdate', (state) => {
+  if (leftRoom) return;  // 离开后不再响应
   if (state.status === 'waiting') {
     renderLobby(state);
     showScreen('lobby');
