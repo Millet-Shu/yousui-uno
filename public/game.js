@@ -148,39 +148,41 @@ function renderLobby(state) {
     div.innerHTML = `<span>${p.name}${p.isYou ? ' (你)' : ''}</span><span class="badge">${p.isAI ? 'AI' : '玩家'}</span>${delBtn}`;
     list.appendChild(div);
   });
-  // 空位加号（仅显示，给观战者用）
+  // 空位加号长方形（观战者点击回到玩家列表）
   if (state.players.length < state.maxPlayers) {
     const addBox = document.createElement('div');
     addBox.className = 'add-slot';
     addBox.textContent = '+';
+    addBox.title = '点击回到玩家列表';
+    addBox.onclick = () => socket.emit('spectatorJoin');
     list.appendChild(addBox);
   }
-  // 观战席
+  // 观战席（固定5个位置）
   const sp = $('lobby-spectators');
   if (sp) {
-    sp.innerHTML = '<div class="section-title">观战席 <span class="count">' + state.spectators.length + '/5</span></div>';
+    const spCount = state.spectators.filter(s => s !== null).length;
+    sp.innerHTML = '<div class="section-title">观战席 <span class="count">' + spCount + '/5</span></div>';
     const row = document.createElement('div');
     row.className = 'spectator-row';
-    state.spectators.forEach(s => {
-      const div = document.createElement('div');
-      div.className = 'spectator-avatar';
-      div.textContent = s.name[0];  // 只显示第一个字
-      div.title = s.name + (s.isYou ? '（点击回到玩家列表）' : '');
-      div.onclick = () => {
-        if (s.isYou) {
-          socket.emit('spectatorJoin');
-        }
-      };
-      row.appendChild(div);
+    // 确保长度是5
+    const spList = state.spectators.slice(0, 5);
+    while (spList.length < 5) spList.push(null);
+    spList.forEach((s, i) => {
+      if (s) {
+        const div = document.createElement('div');
+        div.className = 'spectator-avatar';
+        div.textContent = s.name[0];
+        div.title = s.name;
+        row.appendChild(div);
+      } else {
+        const circle = document.createElement('div');
+        circle.className = 'empty-circle';
+        circle.textContent = '+';
+        circle.title = '点击进入观战席';
+        circle.onclick = () => socket.emit('becomeSpectator', { index: i });
+        row.appendChild(circle);
+      }
     });
-    for (let i = state.spectators.length; i < 5; i++) {
-      const circle = document.createElement('div');
-      circle.className = 'empty-circle';
-      circle.textContent = '+';
-      circle.title = '点击进入观战席';
-      circle.onclick = () => socket.emit('becomeSpectator', { index: i });
-      row.appendChild(circle);
-    }
     sp.appendChild(row);
   }
 }

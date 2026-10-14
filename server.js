@@ -123,6 +123,7 @@ function broadcastRoom(room) {
   }
   // 给观战者发
   for (const s of (room.spectators || [])) {
+    if (!s) continue;
     const socket = io.sockets.sockets.get(s.socketId);
     if (socket) socket.emit('roomUpdate', publicRoomState(room, s));
   }
@@ -160,7 +161,7 @@ function publicRoomState(room, selfPlayer) {
     myUnoCalled: selfId ? !!room.unoCalled[selfId] : false,
     drawPileCount: room.drawPile.length,
     maxPlayers: room.maxPlayers,
-    spectators: (room.spectators || []).map(s => ({ name: s.name, isYou: s.id === selfId })),
+    spectators: (room.spectators || []).slice(0, 5).map(s => s ? { name: s.name, isYou: s.id === selfId } : null),
     log: room.log.slice(-20)
   };
 }
@@ -571,19 +572,16 @@ io.on('connection', (socket) => {
     if (room.status !== 'waiting') { socket.emit('errorMsg', '游戏已开始'); return; }
 
     if (room.players.length >= room.maxPlayers) {
-      // 进观战席（最多5人）
-      if (room.spectators.length >= 5) { socket.emit('errorMsg', '观战席已满'); return; }
-      room.spectators.push({ id: socket.id + '_' + Date.now(), name: name, socketId: socket.id });
+      // 进观战席（最多5人，找空位置）
+      while (room.spectators.length < 5) room.spectators.push(null);
+      const emptyIdx = room.spectators.findIndex(s => !s);
+      if (emptyIdx < 0) { socket.emit('errorMsg', '观战席已满'); return; }
+      room.spectators[emptyIdx] = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id };
       currentRoom = room;
       currentPlayerId = null;
       addLog(room, `${name} 进入观战席`);
       socket.emit('roomJoined', { code: room.code, playerId: null, spectator: true });
-      io.emit('roomUpdate', {
-        code: room.code,
-        players: room.players.map(p => ({ name: p.name, isAI: p.isAI })),
-        spectators: room.spectators.map(s => s.name),
-        maxPlayers: room.maxPlayers
-      });
+      broadcastRoom(room);
       return;
     }
 
@@ -653,9 +651,10 @@ io.on('connection', (socket) => {
     const room = currentRoom;
     if (!room || room.status !== 'waiting') return;
     if (room.players.length >= room.maxPlayers) return;
-    const idx = room.spectators.findIndex(s => s.socketId === socket.id);
+    const idx = room.spectators.findIndex(s => s && s.socketId === socket.id);
     if (idx >= 0) {
-      const sp = room.spectators.splice(idx, 1)[0];
+      const sp = room.spectators[idx];
+      room.spectators[idx] = null;  // 设为null，保持位置
       const newPlayer = { id: sp.id, name: sp.name, socketId: socket.id, isAI: false, hand: [] };
       room.players.push(newPlayer);
       addLog(room, `${sp.name} 从观战席加入游戏`);
@@ -674,9 +673,15 @@ io.on('connection', (socket) => {
       const p = room.players.splice(idx, 1)[0];
       const spId = 'sp_' + Date.now();
       const sp = { id: spId, name: p.name, socketId: socket.id };
-      // 插入到指定位置，没传索引就加到最后
-      const insertAt = Math.min(index ?? room.spectators.length, 4);
-      room.spectators.splice(insertAt, 0, sp);
+      // 确保 spectators 是长度为5的数组
+      while (room.spectators.length < 5) room.spectators.push(null);
+      // 插入到指定位置
+      const insertAt = Math.min(Math.max(index ?? 4, 0), 4);
+      // 找第一个空位置，如果指定位置有人就往后找
+      let pos = insertAt;
+      while (pos < 5 && room.spectators[pos]) pos++;
+      if (pos >= 5) return;  // 观战席满了
+      room.spectators[pos] = sp;
       addLog(room, `${p.name} 进入观战席`);
       currentPlayerId = spId;
       broadcastRoom(room);
