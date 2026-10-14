@@ -115,15 +115,22 @@ function createRoom(maxPlayers = 4) {
 }
 
 function broadcastRoom(room) {
+  // 给玩家发
   for (const p of room.players) {
     if (p.isAI) continue;
     const socket = io.sockets.sockets.get(p.socketId);
     if (socket) socket.emit('roomUpdate', publicRoomState(room, p));
   }
+  // 给观战者发
+  for (const s of (room.spectators || [])) {
+    const socket = io.sockets.sockets.get(s.socketId);
+    if (socket) socket.emit('roomUpdate', publicRoomState(room, s));
+  }
 }
 
 // 给客户端的状态：每人只看到自己的手牌，其他人只看手牌数
 function publicRoomState(room, selfPlayer) {
+  const selfId = selfPlayer ? selfPlayer.id : null;
   return {
     code: room.code,
     status: room.status,
@@ -135,12 +142,12 @@ function publicRoomState(room, selfPlayer) {
       handCount: p.hand.length,
       finished: !!p.finished,
       rank: p.rank || null,
-      isYou: p.id === selfPlayer.id,
+      isYou: p.id === selfId,
       isCurrent: room.players[room.currentIndex] && room.players[room.currentIndex].id === p.id
     })),
     topCard: room.topCard,
     currentColor: room.currentColor,
-    yourHand: selfPlayer.hand,
+    yourHand: selfPlayer && selfPlayer.hand ? selfPlayer.hand : [],
     currentPlayerName: room.players[room.currentIndex] ? room.players[room.currentIndex].name : '',
     direction: room.direction,
     pendingDraw: room.pendingDraw,
@@ -148,12 +155,12 @@ function publicRoomState(room, selfPlayer) {
     wildPending: room.wildPending,
     paused: !!room.paused,
     pausedBy: room.pausedBy || null,
-    isPausedByYou: room.pausedBy === selfPlayer.name,
+    isPausedByYou: room.pausedBy === (selfPlayer ? selfPlayer.name : ''),
     pendingReport: room.pendingReport,
-    myUnoCalled: !!room.unoCalled[selfPlayer.id],
+    myUnoCalled: selfId ? !!room.unoCalled[selfId] : false,
     drawPileCount: room.drawPile.length,
     maxPlayers: room.maxPlayers,
-    spectators: (room.spectators || []).map(s => ({ name: s.name })),
+    spectators: (room.spectators || []).map(s => ({ name: s.name, isYou: s.id === selfId })),
     log: room.log.slice(-20)
   };
 }
@@ -649,7 +656,8 @@ io.on('connection', (socket) => {
     const idx = room.spectators.findIndex(s => s.socketId === socket.id);
     if (idx >= 0) {
       const sp = room.spectators.splice(idx, 1)[0];
-      room.players.push({ id: sp.id, name: sp.name, socketId: socket.id, isAI: false, hand: [] });
+      const newPlayer = { id: sp.id, name: sp.name, socketId: socket.id, isAI: false, hand: [] };
+      room.players.push(newPlayer);
       addLog(room, `${sp.name} 从观战席加入游戏`);
       currentPlayerId = sp.id;
       socket.emit('roomJoined', { code: room.code, playerId: sp.id });
