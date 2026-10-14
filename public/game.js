@@ -330,11 +330,10 @@ function renderGame(state) {
   // 菜单里的房主功能：只有房主能重开/结束
   $('btn-restart').classList.toggle('hidden', !state.isOwner);
   $('btn-endgame').classList.toggle('hidden', !state.isOwner);
-  // 不出按钮：轮到自己时显示，显示要摸多少张
+  // 不出按钮：只有被加牌时才显示，显示要摸多少张
   const myTurn2 = state.players.find(p => p.isYou && p.isCurrent);
-  if (myTurn2 && state.status === 'playing' && !state.wildPending) {
-    const drawNum = state.pendingDraw > 0 ? state.pendingDraw : 1;
-    $('btn-pass').textContent = `不出(摸${drawNum}张)`;
+  if (myTurn2 && state.status === 'playing' && !state.wildPending && state.pendingDraw > 0) {
+    $('btn-pass').textContent = `不出(摸${state.pendingDraw}张)`;
     $('btn-pass').classList.remove('hidden');
   } else {
     $('btn-pass').classList.add('hidden');
