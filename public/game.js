@@ -106,7 +106,7 @@ function renderGame(state) {
     $('top-label').textContent = '?';
   }
 
-  // 对手（按位置分布：上、左、右）
+  // 对手（按位置分布：上、左、右，显示手牌背面）
   const oppEl = $('opponents');
   oppEl.innerHTML = '';
   const positions = ['pos-top', 'pos-left', 'pos-right'];
@@ -115,10 +115,19 @@ function renderGame(state) {
     div.className = 'opponent ' + (positions[i] || 'pos-top') + (p.isCurrent ? ' current' : '');
     const penalty = (p.isCurrent && state.pendingDraw > 0) ? `<div class="penalty">+${state.pendingDraw}</div>` : '';
     const rankLabel = p.finished ? `<div class="rank">第 ${p.rank} 名</div>` : '';
-    // 举报按钮：只有别人没喊有岁时才显示，且被举报者自己看不到
     const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id)
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
-    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}</div><div class="count">${p.handCount} 张</div>${penalty}${rankLabel}${reportBtn}`;
+    // 手牌背面叠放
+    const showCount = Math.min(p.handCount, 14);
+    let cardsHtml = '';
+    for (let j = 0; j < showCount; j++) {
+      cardsHtml += `<div class="opp-card-back" style="left:${j * 8}px"></div>`;
+    }
+    let overFlowHtml = '';
+    if (p.handCount > 14) {
+      overFlowHtml = `<div class="opp-card-back overflow">${p.handCount}</div>`;
+    }
+    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}</div><div class="opp-hand">${cardsHtml}${overFlowHtml}</div>${penalty}${rankLabel}${reportBtn}`;
     oppEl.appendChild(div);
   });
 
