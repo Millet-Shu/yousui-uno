@@ -157,17 +157,17 @@ function renderGame(state) {
     $('top-label').textContent = '?';
   }
 
-  // 对手（按角度均匀分布在圆周上，玩家在底部）
+  // 对手（上半圆均匀分布：右边开始逆时针到左边）
   const oppEl = $('opponents');
   oppEl.innerHTML = '';
   const opponents = state.players.filter(p => !p.isYou);
   const n = opponents.length;
   opponents.forEach((p, i) => {
-    // 从底部(270°)开始，逆时针均匀分布
-    const angle = 270 - (360 / (n + 1)) * (i + 1);
+    // 从右边(0°)到左边(180°)均匀分布
+    const angle = (180 / (n + 1)) * (i + 1);
     const rad = angle * Math.PI / 180;
-    const x = 50 + 38 * Math.cos(rad);  // 百分比
-    const y = 50 + 38 * Math.sin(rad);
+    const x = 50 + 42 * Math.cos(rad);  // 百分比
+    const y = 50 - 38 * Math.sin(rad);  // 往上为负
     const div = document.createElement('div');
     div.className = 'opponent ' + (p.isCurrent ? ' current' : '');
     div.style.left = x + '%';
