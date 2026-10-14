@@ -107,7 +107,7 @@ socket.on('roomUpdate', (state) => {
 // ===== 渲染房间等待页 =====
 function renderLobby(state) {
   const list = $('lobby-players');
-  list.innerHTML = '';
+  list.innerHTML = `<div class="section-title">玩家 <span class="count">${state.players.length}/${state.maxPlayers}</span></div>`;
   state.players.forEach((p, i) => {
     const div = document.createElement('div');
     div.className = 'player';
@@ -115,16 +115,32 @@ function renderLobby(state) {
     div.innerHTML = `<span>${p.name}${p.isYou ? ' (你)' : ''}</span><span class="badge">${p.isAI ? 'AI' : '玩家'}</span>${delBtn}`;
     list.appendChild(div);
   });
+  // 空位加号
+  if (state.players.length < state.maxPlayers) {
+    const addBox = document.createElement('div');
+    addBox.className = 'add-slot';
+    addBox.textContent = '+';
+    list.appendChild(addBox);
+  }
   // 观战席
   const sp = $('lobby-spectators');
   if (sp) {
-    sp.innerHTML = '<div class="section-title">观战席</div>';
+    sp.innerHTML = '<div class="section-title">观战席 <span class="count">' + state.spectators.length + '/5</span></div>';
+    const row = document.createElement('div');
+    row.className = 'spectator-row';
     state.spectators.forEach(s => {
       const div = document.createElement('div');
       div.className = 'player';
-      div.innerHTML = `<span>${s.name}</span><button class="add-btn" onclick="socket.emit('spectatorJoin')">+ 加入</button>`;
-      sp.appendChild(div);
+      div.innerHTML = `<span>${s.name}</span><button class="add-btn" onclick="socket.emit('spectatorJoin')">加入</button>`;
+      row.appendChild(div);
     });
+    for (let i = state.spectators.length; i < 5; i++) {
+      const circle = document.createElement('div');
+      circle.className = 'empty-circle';
+      circle.textContent = '+';
+      row.appendChild(circle);
+    }
+    sp.appendChild(row);
   }
 }
 

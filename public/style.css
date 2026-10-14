@@ -110,6 +110,10 @@ input:focus { border-color: #6c7bff; }
 .del-btn { background: #e03030; color: #fff; border: none; border-radius: 50%; width: 22px; height: 22px; cursor: pointer; font-size: 14px; }
 .add-btn { background: #30a050; color: #fff; border: none; border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
 .section-title { font-size: 12px; color: #888; margin: 10px 0 4px; }
+.section-title .count { float: right; color: #aaa; }
+.add-slot { background: rgba(255,255,255,0.05); border: 2px dashed #555; border-radius: 8px; padding: 12px; text-align: center; color: #888; font-size: 20px; margin: 4px 0; cursor: pointer; }
+.spectator-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.empty-circle { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; color: #888; font-size: 20px; cursor: pointer; }
 
 /* ===== 游戏页 ===== */
 #screen-game { display: none; }
