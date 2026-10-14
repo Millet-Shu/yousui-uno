@@ -142,6 +142,9 @@ socket.on('roomUpdate', (state) => {
 function renderLobby(state) {
   // 显示房间码
   $('lobby-code').textContent = state.code || '';
+  // 只有房主能开始游戏和加AI
+  $('btn-start').classList.toggle('hidden', !state.isOwner);
+  $('btn-addai').classList.toggle('hidden', !state.isOwner);
   const list = $('lobby-players');
   list.innerHTML = `<div class="section-title">玩家 <span class="count">${state.players.length}/${state.maxPlayers}</span></div>`;
   state.players.forEach((p, i) => {
@@ -324,6 +327,9 @@ function renderGame(state) {
   }
   // 抢先手按钮
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing');
+  // 菜单里的房主功能：只有房主能重开/结束
+  $('btn-restart').classList.toggle('hidden', !state.isOwner);
+  $('btn-endgame').classList.toggle('hidden', !state.isOwner);
   // 不出按钮：轮到自己时显示，显示要摸多少张
   const myTurn = state.players.find(p => p.isYou && p.isCurrent);
   if (myTurn && state.status === 'playing' && !state.wildPending) {

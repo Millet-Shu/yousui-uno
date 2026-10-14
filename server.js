@@ -96,6 +96,7 @@ function createRoom(maxPlayers = 4) {
   rooms.set(code, {
     code,
     maxPlayers,
+    ownerId: null,  // 房主ID
     players: [],        // {id, name, socketId, isAI, hand: []}
     spectators: [null, null, null, null, null],     // 观战席固定5个位置，空的存null
     drawPile: [],
@@ -161,6 +162,7 @@ function publicRoomState(room, selfPlayer) {
     myUnoCalled: selfId ? !!room.unoCalled[selfId] : false,
     drawPileCount: room.drawPile.length,
     maxPlayers: room.maxPlayers,
+    isOwner: selfId === room.ownerId,
     spectators: (room.spectators || []).slice(0, 5).map(s => s ? { name: s.name, isYou: s.id === selfId } : null),
     log: room.log.slice(-20)
   };
@@ -564,6 +566,7 @@ io.on('connection', (socket) => {
     room.mode = mode || 'uno';  // 游戏模式：uno / yousui
     const player = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id, isAI: false, hand: [] };
     room.players.push(player);
+    room.ownerId = player.id;  // 设置房主
     currentRoom = room;
     currentPlayerId = player.id;
     socket.emit('roomCreated', { code: room.code, playerId: player.id });
@@ -616,14 +619,14 @@ io.on('connection', (socket) => {
 
   socket.on('startGame', () => {
     const room = currentRoom;
-    if (!room) return;
+    if (!room || room.ownerId !== currentPlayerId) return;
     if (room.players.length < 2) { socket.emit('errorMsg', '至少需要2人（可加AI）'); return; }
     startGame(room);
   });
 
   socket.on('restartGame', () => {
     const room = currentRoom;
-    if (!room) return;
+    if (!room || room.ownerId !== currentPlayerId) return;
     // 清理已完赛状态，重新开始
     for (const p of room.players) { p.finished = false; p.rank = null; }
     startGame(room);
@@ -631,7 +634,7 @@ io.on('connection', (socket) => {
 
   socket.on('endGame', () => {
     const room = currentRoom;
-    if (!room) return;
+    if (!room || room.ownerId !== currentPlayerId) return;
     room.status = 'waiting';
     room.players.forEach(p => { p.hand = []; p.finished = false; p.rank = null; });
     room.drawPile = [];
@@ -647,7 +650,7 @@ io.on('connection', (socket) => {
 
   socket.on('addAI', () => {
     const room = currentRoom;
-    if (!room || room.status !== 'waiting') return;
+    if (!room || room.status !== 'waiting' || room.ownerId !== currentPlayerId) return;
     if (room.players.length >= room.maxPlayers) return;
     room.players.push({
       id: 'ai_' + Date.now() + '_' + Math.random(),
