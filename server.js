@@ -664,8 +664,10 @@ io.on('connection', (socket) => {
     const idx = room.players.findIndex(p => p.id === currentPlayerId);
     if (idx >= 0) {
       const p = room.players.splice(idx, 1)[0];
-      room.spectators.push({ id: 'sp_' + Date.now(), name: p.name, socketId: socket.id });
+      const spId = 'sp_' + Date.now();
+      room.spectators.push({ id: spId, name: p.name, socketId: socket.id });
       addLog(room, `${p.name} 进入观战席`);
+      currentPlayerId = spId;  // 更新当前玩家ID
       broadcastRoom(room);
     }
   });
