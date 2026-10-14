@@ -575,7 +575,20 @@ io.on('connection', (socket) => {
     if (!name) { socket.emit('errorMsg', '请输入名字'); return; }
     const room = rooms.get(code);
     if (!room) { socket.emit('errorMsg', '房间不存在'); return; }
-    if (room.status !== 'waiting') { socket.emit('errorMsg', '游戏已开始'); return; }
+
+    // 游戏已开始，直接进观战席
+    if (room.status !== 'waiting') {
+      while (room.spectators.length < 5) room.spectators.push(null);
+      const emptyIdx = room.spectators.findIndex(s => !s);
+      if (emptyIdx < 0) { socket.emit('errorMsg', '观战席已满'); return; }
+      room.spectators[emptyIdx] = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id };
+      currentRoom = room;
+      currentPlayerId = null;
+      addLog(room, `${name} 进入观战席`);
+      socket.emit('roomJoined', { code: room.code, playerId: null, spectator: true });
+      broadcastRoom(room);
+      return;
+    }
 
     if (room.players.length >= room.maxPlayers) {
       // 进观战席（最多5人，找空位置）
