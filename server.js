@@ -561,6 +561,8 @@ io.on('connection', (socket) => {
   socket.on('createRoom', ({ name, maxPlayers, mode }) => {
     name = (name || '').trim();
     if (!name) { socket.emit('errorMsg', '请输入名字'); return; }
+    // 有岁模式还在开发中，暂时只允许UNO
+    if (mode === 'yousui') { socket.emit('errorMsg', '有岁模式还在开发中，敬请期待！'); return; }
     maxPlayers = Math.min(Math.max(parseInt(maxPlayers) || 4, 2), 8);
     const room = createRoom(maxPlayers);
     room.mode = mode || 'uno';  // 游戏模式：uno / yousui
