@@ -173,13 +173,35 @@ function renderLobby(state) {
         div.className = 'spectator-avatar';
         div.textContent = s.name[0];
         div.title = s.name;
+        div.onclick = () => {
+          const selected = row.querySelector('.spectator-avatar.selected');
+          if (selected && s.isYou) {
+            // 点自己，取消选中
+            div.classList.remove('selected');
+          } else if (selected && !s.isYou) {
+            // 有选中的，点别人，交换位置
+            socket.emit('moveSpectator', { index: i });
+          } else if (s.isYou) {
+            // 点自己，进入选中模式
+            row.querySelectorAll('.spectator-avatar').forEach(d => d.classList.remove('selected'));
+            div.classList.add('selected');
+          }
+        };
         row.appendChild(div);
       } else {
         const circle = document.createElement('div');
         circle.className = 'empty-circle';
         circle.textContent = '+';
         circle.title = '点击进入观战席';
-        circle.onclick = () => socket.emit('becomeSpectator', { index: i });
+        circle.onclick = () => {
+          // 如果有选中的头像，就移动到这个位置
+          const selected = row.querySelector('.spectator-avatar.selected');
+          if (selected) {
+            socket.emit('moveSpectator', { index: i });
+          } else {
+            socket.emit('becomeSpectator', { index: i });
+          }
+        };
         row.appendChild(circle);
       }
     });

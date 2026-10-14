@@ -664,6 +664,20 @@ io.on('connection', (socket) => {
     }
   });
 
+  // 观战者移动/交换位置
+  socket.on('moveSpectator', ({ index }) => {
+    const room = currentRoom;
+    if (!room || room.status !== 'waiting') return;
+    const fromIdx = room.spectators.findIndex(s => s && s.socketId === socket.id);
+    if (fromIdx < 0) return;
+    const toIdx = Math.max(0, Math.min(index, 4));
+    // 交换位置
+    const temp = room.spectators[fromIdx];
+    room.spectators[fromIdx] = room.spectators[toIdx];
+    room.spectators[toIdx] = temp;
+    broadcastRoom(room);
+  });
+
   // 玩家主动进入观战席（可选择座位）
   socket.on('becomeSpectator', ({ index } = {}) => {
     const room = currentRoom;
