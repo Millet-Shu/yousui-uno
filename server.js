@@ -690,8 +690,9 @@ io.on('connection', (socket) => {
     if (!room) return;
     const idx = room.players.findIndex(p => p.id === currentPlayerId);
     if (idx >= 0) {
+      const p = room.players[idx];
       room.players.splice(idx, 1);
-      addLog(room, `${currentPlayerId} 退出房间`);
+      addLog(room, `${p.name} 退出房间`);
       if (room.players.length === 0) rooms.delete(room.code);
       broadcastRoom(room);
     }
