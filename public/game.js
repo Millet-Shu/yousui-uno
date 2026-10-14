@@ -38,9 +38,30 @@ $('btn-addai').onclick = () => socket.emit('addAI');
 $('btn-start').onclick = () => socket.emit('startGame');
 $('btn-uno').onclick = () => socket.emit('callUno');
 $('btn-grab').onclick = () => socket.emit('grabLead');
-$('btn-restart').onclick = () => { socket.emit('restartGame'); $('menu-dropdown').classList.add('hidden'); };
-$('btn-endgame').onclick = () => { socket.emit('endGame'); $('menu-dropdown').classList.add('hidden'); };
 $('btn-menu').onclick = () => $('menu-dropdown').classList.toggle('hidden');
+
+// 确认弹窗
+let confirmCallback = null;
+function showConfirm(text, cb) {
+  $('confirm-text').textContent = text;
+  confirmCallback = cb;
+  $('confirm-modal').classList.remove('hidden');
+}
+$('confirm-no').onclick = () => { $('confirm-modal').classList.add('hidden'); confirmCallback = null; };
+$('confirm-yes').onclick = () => { $('confirm-modal').classList.add('hidden'); if (confirmCallback) confirmCallback(); confirmCallback = null; };
+
+$('btn-restart').onclick = () => {
+  $('menu-dropdown').classList.add('hidden');
+  showConfirm('确定要重开游戏吗？', () => socket.emit('restartGame'));
+};
+$('btn-endgame').onclick = () => {
+  $('menu-dropdown').classList.add('hidden');
+  showConfirm('确定要结束游戏回到房间吗？', () => socket.emit('endGame'));
+};
+$('btn-leave-room').onclick = () => {
+  $('menu-dropdown').classList.add('hidden');
+  showConfirm('确定要退出房间吗？', () => { localStorage.clear(); location.reload(); });
+};
 
 // ===== 服务器事件 =====
 socket.on('roomCreated', ({ code, playerId }) => {
