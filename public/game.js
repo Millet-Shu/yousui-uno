@@ -148,11 +148,12 @@ function renderLobby(state) {
     div.innerHTML = `<span>${p.name}${p.isYou ? ' (你)' : ''}</span><span class="badge">${p.isAI ? 'AI' : '玩家'}</span>${delBtn}`;
     list.appendChild(div);
   });
-  // 空位加号
+  // 空位加号（点击加AI）
   if (state.players.length < state.maxPlayers) {
     const addBox = document.createElement('div');
     addBox.className = 'add-slot';
     addBox.textContent = '+';
+    addBox.onclick = () => socket.emit('addAI');
     list.appendChild(addBox);
   }
   // 观战席
