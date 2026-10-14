@@ -163,8 +163,13 @@ function renderLobby(state) {
     row.className = 'spectator-row';
     state.spectators.forEach(s => {
       const div = document.createElement('div');
-      div.className = 'player';
-      div.innerHTML = `<span>${s.name}</span><button class="add-btn" onclick="socket.emit('spectatorJoin')">加入</button>`;
+      div.className = 'spectator-avatar';
+      div.textContent = s.name[0];  // 只显示第一个字
+      div.title = s.name;
+      div.onclick = () => {
+        // 观战者自己点可以回到玩家列表
+        if (s.isYou) socket.emit('spectatorJoin');
+      };
       row.appendChild(div);
     });
     for (let i = state.spectators.length; i < 5; i++) {
