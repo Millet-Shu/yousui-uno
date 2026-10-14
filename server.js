@@ -144,7 +144,11 @@ function publicRoomState(room, selfPlayer) {
     currentPlayerName: room.players[room.currentIndex] ? room.players[room.currentIndex].name : '',
     direction: room.direction,
     pendingDraw: room.pendingDraw,
+    pendingDrawType: room.pendingDrawType,
     wildPending: room.wildPending,
+    paused: !!room.paused,
+    pausedBy: room.pausedBy || null,
+    isPausedByYou: room.pausedBy === selfPlayer.name,
     pendingReport: room.pendingReport,
     myUnoCalled: !!room.unoCalled[selfPlayer.id],
     drawPileCount: room.drawPile.length,
@@ -639,6 +643,30 @@ io.on('connection', (socket) => {
 
   socket.on('grabLead', () => {
     if (currentRoom) grabLead(currentRoom, currentPlayerId);
+  });
+
+  socket.on('pauseGame', () => {
+    const room = currentRoom;
+    if (!room || room.status !== 'playing') return;
+    const p = room.players.find(p => p.id === currentPlayerId);
+    if (p) {
+      room.paused = true;
+      room.pausedBy = p.name;
+      addLog(room, `${p.name} 暂停了游戏`);
+      broadcastRoom(room);
+    }
+  });
+
+  socket.on('resumeGame', () => {
+    const room = currentRoom;
+    if (!room) return;
+    room.paused = false;
+    room.pausedBy = null;
+    addLog(room, '游戏继续');
+    broadcastRoom(room);
+    // 继续AI回合
+    const next = room.players[room.currentIndex];
+    if (next && next.isAI) setTimeout(() => aiTurn(room), 1000);
   });
 
   socket.on('playCard', ({ cardIndex, chosenColor }) => {

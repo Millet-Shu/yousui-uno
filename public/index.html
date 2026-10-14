@@ -71,9 +71,17 @@
       <button id="btn-menu" class="btn-menu">☰</button>
       <div id="menu-dropdown" class="menu-dropdown hidden">
         <button id="btn-restart">重开游戏</button>
+        <button id="btn-pause">暂停游戏</button>
         <button id="btn-endgame">结束游戏</button>
         <button id="btn-leave-room">退出房间</button>
       </div>
+    </div>
+
+    <!-- 暂停遮罩 -->
+    <div id="pause-overlay" class="pause-overlay hidden">
+      <div class="pause-text">游戏暂停</div>
+      <div id="pause-by" class="pause-by"></div>
+      <button id="btn-resume" class="btn primary hidden">取消暂停</button>
     </div>
 
     <!-- 确认弹窗 -->

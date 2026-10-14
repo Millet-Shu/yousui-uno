@@ -62,6 +62,11 @@ $('btn-leave-room').onclick = () => {
   $('menu-dropdown').classList.add('hidden');
   showConfirm('确定要退出房间吗？', () => { localStorage.clear(); location.reload(); });
 };
+$('btn-pause').onclick = () => {
+  $('menu-dropdown').classList.add('hidden');
+  socket.emit('pauseGame');
+};
+$('btn-resume').onclick = () => socket.emit('resumeGame');
 
 // ===== 服务器事件 =====
 socket.on('roomCreated', ({ code, playerId }) => {
@@ -243,6 +248,17 @@ function renderGame(state) {
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing');
   // 牌组数量
   $('draw-count').textContent = state.drawPileCount || 0;
+
+  // 暂停遮罩
+  const pauseOverlay = $('pause-overlay');
+  if (state.paused) {
+    pauseOverlay.classList.remove('hidden');
+    $('pause-by').textContent = state.pausedBy + ' 暂停了游戏';
+    // 只有暂停的人能看到取消按钮
+    $('btn-resume').classList.toggle('hidden', !state.isPausedByYou);
+  } else {
+    pauseOverlay.classList.add('hidden');
+  }
 
   // 日志
   $('game-log').innerHTML = state.log.map(l => `<div>${l}</div>`).join('');

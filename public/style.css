@@ -114,6 +114,10 @@ input:focus { border-color: #6c7bff; }
 .add-slot { background: rgba(255,255,255,0.05); border: 2px dashed #555; border-radius: 8px; padding: 12px; text-align: center; color: #888; font-size: 20px; margin: 4px 0; cursor: pointer; }
 .spectator-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .empty-circle { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; color: #888; font-size: 20px; cursor: pointer; }
+.pause-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.pause-text { font-size: 48px; font-weight: bold; color: #fff; }
+.pause-by { font-size: 16px; color: #aaa; margin-top: 10px; }
+#btn-resume { margin-top: 20px; }
 
 /* ===== 游戏页 ===== */
 #screen-game { display: none; }
