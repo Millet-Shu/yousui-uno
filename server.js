@@ -301,8 +301,8 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   room.discardPile.push(card);
   room.topCard = card;
 
-  // 没喊有岁就出到剩<=1张，可以被举报（游戏进行中才行）
-  if (room.status === 'playing' && player.hand.length <= 1 && !room.unoCalled[player.id]) {
+  // 没喊有岁就出到剩<=1张，可以被举报（游戏进行中才行，赢了的人不举报）
+  if (room.status === 'playing' && !player.finished && player.hand.length <= 1 && !room.unoCalled[player.id]) {
     room.pendingReport = { playerId: player.id, playerName: player.name };
   } else {
     room.pendingReport = null;
@@ -541,6 +541,12 @@ function aiTurn(room) {
     chosenColor = 'red';
     for (const c in counts) if (counts[c] > (counts[chosenColor] || 0)) chosenColor = c;
   }
+
+  // AI 75%概率喊"有岁"（出牌后剩1张时）
+  if (player.hand.length - 1 === 1 && Math.random() < 0.75) {
+    room.unoCalled[player.id] = true;
+  }
+
   playCard(room, player.id, bestIdx, chosenColor);
 }
 
