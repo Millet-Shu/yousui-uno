@@ -466,7 +466,7 @@ function colorName(c) {
 // ==================== AI ====================
 
 function aiTurn(room) {
-  if (room.status !== 'playing') return;
+  if (room.status !== 'playing' || room.paused) return;
   const player = room.players[room.currentIndex];
   if (!player || !player.isAI) return;
 
