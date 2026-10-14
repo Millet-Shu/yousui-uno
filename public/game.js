@@ -47,6 +47,7 @@ $('btn-addai').onclick = () => socket.emit('addAI');
 $('btn-start').onclick = () => socket.emit('startGame');
 $('btn-uno').onclick = () => socket.emit('callUno');
 $('btn-grab').onclick = () => socket.emit('grabLead');
+$('btn-skip').onclick = () => socket.emit('skipTurn');
 $('btn-menu').onclick = () => $('menu-dropdown').classList.toggle('hidden');
 
 // 确认弹窗
@@ -337,6 +338,12 @@ function renderGame(state) {
     $('btn-pass').classList.remove('hidden');
   } else {
     $('btn-pass').classList.add('hidden');
+  }
+  // 跳过按钮：摸完牌后可以选择跳过
+  if (myTurn2 && state.status === 'playing' && state.justDrew) {
+    $('btn-skip').classList.remove('hidden');
+  } else {
+    $('btn-skip').classList.add('hidden');
   }
   // 左上角房间码
   $('game-code').textContent = state.code || '----';

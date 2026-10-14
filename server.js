@@ -162,6 +162,7 @@ function publicRoomState(room, selfPlayer) {
     myUnoCalled: selfId ? !!room.unoCalled[selfId] : false,
     drawPileCount: room.drawPile.length,
     maxPlayers: room.maxPlayers,
+    justDrew: !!room.justDrew,  // 玩家刚摸了牌，可以选择打出或跳过
     isOwner: selfPlayer && selfPlayer.socketId === room.ownerSocketId,
     spectators: (room.spectators || []).slice(0, 5).map(s => s ? { name: s.name, isYou: s.id === selfId } : null),
     log: room.log.slice(-20)
@@ -302,6 +303,7 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   player.hand.splice(cardIndex, 1);
   room.discardPile.push(card);
   room.topCard = card;
+  room.justDrew = false;  // 打出牌后清除摸牌状态
 
   // 没喊有岁就出到剩<=1张，可以被举报（游戏进行中才行，赢了的人不举报）
   if (room.status === 'playing' && player.hand.length > 0 && player.hand.length <= 1 && !room.unoCalled[player.id]) {
@@ -440,9 +442,15 @@ function drawCard(room, playerId) {
   if (drawn.length > 0) {
     player.hand.push(drawn[0]);
     addLog(room, `${player.name} 摸了一张牌`);
+    // 检查摸到的牌能不能打出，如果能打出，玩家可以选择打出，或者跳过
+    if (isPlayable(drawn[0], room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType)) {
+      room.justDrew = true;  // 标记玩家刚摸了牌，可以选择打出
+    } else {
+      advance(room);  // 摸的牌不能打出，直接跳过
+    }
+  } else {
+    advance(room);  // 没摸到牌，直接跳过
   }
-  // 不自动出牌，轮到下一个人
-  advance(room);
   broadcastRoom(room);
 
   const next = room.players[room.currentIndex];
@@ -793,6 +801,21 @@ io.on('connection', (socket) => {
 
   socket.on('drawCard', () => {
     if (currentRoom) drawCard(currentRoom, currentPlayerId);
+  });
+
+  // 跳过回合（摸完牌后选择不打出）
+  socket.on('skipTurn', () => {
+    const room = currentRoom;
+    if (!room || room.status !== 'playing' || !room.justDrew) return;
+    const player = room.players[room.currentIndex];
+    if (!player || player.id !== currentPlayerId) return;
+    room.justDrew = false;
+    advance(room);
+    broadcastRoom(room);
+    const next = room.players[room.currentIndex];
+    if (next && next.isAI && room.status === 'playing') {
+      setTimeout(() => aiTurn(room), 1000);
+    }
   });
 
   socket.on('disconnect', () => {
