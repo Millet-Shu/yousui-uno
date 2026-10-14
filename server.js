@@ -532,7 +532,8 @@ io.on('connection', (socket) => {
     if (room.status !== 'waiting') { socket.emit('errorMsg', '游戏已开始'); return; }
 
     if (room.players.length >= room.maxPlayers) {
-      // 进观战席
+      // 进观战席（最多5人）
+      if (room.spectators.length >= 5) { socket.emit('errorMsg', '观战席已满'); return; }
       room.spectators.push({ id: socket.id + '_' + Date.now(), name: name, socketId: socket.id });
       currentRoom = room;
       currentPlayerId = null;
@@ -590,7 +591,7 @@ io.on('connection', (socket) => {
   socket.on('addAI', () => {
     const room = currentRoom;
     if (!room || room.status !== 'waiting') return;
-    if (room.players.length >= 4) return;
+    if (room.players.length >= room.maxPlayers) return;
     room.players.push({
       id: 'ai_' + Date.now() + '_' + Math.random(),
       name: 'AI-' + (room.players.length + 1),
