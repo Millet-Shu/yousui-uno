@@ -91,8 +91,14 @@ socket.on('roomJoined', ({ code, playerId }) => {
 
 // 重连成功，直接进游戏
 socket.on('reconnected', (state) => {
-  renderGame(state);
-  showScreen('game');
+  // 根据房间状态显示对应页面
+  if (state.status === 'waiting') {
+    renderLobby(state);
+    showScreen('lobby');
+  } else {
+    renderGame(state);
+    showScreen('game');
+  }
 });
 
 socket.on('reconnectFailed', () => {
