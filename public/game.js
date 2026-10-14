@@ -63,7 +63,9 @@ $('btn-leave-room').onclick = () => {
   showConfirm('确定要退出房间吗？', () => {
     socket.emit('leaveRoom');
     localStorage.clear();
-    location.reload();
+    myPlayerId = null;
+    myRoomCode = null;
+    showScreen('home');
   });
 };
 $('btn-pause').onclick = () => {
