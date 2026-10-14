@@ -23,7 +23,8 @@ $('btn-create').onclick = () => {
   const name = $('input-name').value.trim();
   if (!name) { $('home-error').textContent = '请输入你的名字'; return; }
   const maxPlayers = parseInt($('input-maxplayers').value);
-  socket.emit('createRoom', { name, maxPlayers });
+  const mode = $('input-mode').value;
+  socket.emit('createRoom', { name, maxPlayers, mode });
 };
 
 $('btn-join').onclick = () => {

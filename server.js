@@ -556,11 +556,12 @@ io.on('connection', (socket) => {
   let currentRoom = null;
   let currentPlayerId = null;
 
-  socket.on('createRoom', ({ name, maxPlayers }) => {
+  socket.on('createRoom', ({ name, maxPlayers, mode }) => {
     name = (name || '').trim();
     if (!name) { socket.emit('errorMsg', '请输入名字'); return; }
     maxPlayers = Math.min(Math.max(parseInt(maxPlayers) || 4, 2), 8);
     const room = createRoom(maxPlayers);
+    room.mode = mode || 'uno';  // 游戏模式：uno / yousui
     const player = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id, isAI: false, hand: [] };
     room.players.push(player);
     currentRoom = room;
