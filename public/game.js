@@ -34,7 +34,14 @@ $('btn-join').onclick = () => {
   socket.emit('joinRoom', { code, name });
 };
 
-$('btn-leave').onclick = () => location.reload();
+$('btn-leave').onclick = () => {
+  socket.emit('leaveRoom');
+  localStorage.clear();
+  myPlayerId = null;
+  myRoomCode = null;
+  leftRoom = true;
+  showScreen('home');
+};
 $('btn-addai').onclick = () => socket.emit('addAI');
 $('btn-start').onclick = () => socket.emit('startGame');
 $('btn-uno').onclick = () => socket.emit('callUno');
