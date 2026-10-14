@@ -123,9 +123,6 @@ input:focus { border-color: #6c7bff; }
 #opponents .opponent {
   position: absolute;
   text-align: center;
-  background: rgba(0,0,0,0.3);
-  padding: 8px 16px;
-  border-radius: 8px;
 }
 .opponent.pos-top { top: 20px; left: 50%; transform: translateX(-50%); }
 .opponent.pos-left { top: 50%; left: 20px; transform: translateY(-50%); }
