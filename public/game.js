@@ -332,6 +332,8 @@ function renderGame(state) {
   } else {
     $('btn-pass').classList.add('hidden');
   }
+  // 左上角房间码
+  $('game-code').textContent = state.code || '----';
   // 牌组数量
   $('draw-count').textContent = state.drawPileCount || 0;
 
