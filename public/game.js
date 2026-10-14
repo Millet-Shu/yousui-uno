@@ -6,9 +6,10 @@ let myRoomCode = localStorage.getItem('uno_roomCode') || null;
 let leftRoom = false;  // 离开房间标志
 
 // 页面加载时尝试重连
-if (myPlayerId) {
-  socket.emit('reconnect', { playerId: myPlayerId });
-}
+// 暂时去掉自动重连，避免创建新房间时被旧房间拦截
+// if (myPlayerId) {
+//   socket.emit('reconnect', { playerId: myPlayerId });
+// }
 
 // DOM
 const $ = id => document.getElementById(id);
