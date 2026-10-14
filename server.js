@@ -600,6 +600,29 @@ io.on('connection', (socket) => {
     broadcastRoom(room);
   });
 
+  socket.on('removeAI', ({ index }) => {
+    const room = currentRoom;
+    if (!room || room.status !== 'waiting') return;
+    if (room.players[index] && room.players[index].isAI) {
+      room.players.splice(index, 1);
+      broadcastRoom(room);
+    }
+  });
+
+  // 观战席玩家加入游戏
+  socket.on('spectatorJoin', () => {
+    const room = currentRoom;
+    if (!room || room.status !== 'waiting') return;
+    if (room.players.length >= room.maxPlayers) return;
+    const idx = room.spectators.findIndex(s => s.socketId === socket.id);
+    if (idx >= 0) {
+      const sp = room.spectators.splice(idx, 1)[0];
+      room.players.push({ id: sp.id, name: sp.name, socketId: socket.id, isAI: false, hand: [] });
+      addLog(room, `${sp.name} 从观战席加入游戏`);
+      broadcastRoom(room);
+    }
+  });
+
   socket.on('grabLead', () => {
     if (currentRoom) grabLead(currentRoom, currentPlayerId);
   });

@@ -108,12 +108,24 @@ socket.on('roomUpdate', (state) => {
 function renderLobby(state) {
   const list = $('lobby-players');
   list.innerHTML = '';
-  state.players.forEach(p => {
+  state.players.forEach((p, i) => {
     const div = document.createElement('div');
     div.className = 'player';
-    div.innerHTML = `<span>${p.name}${p.isYou ? ' (你)' : ''}</span><span class="badge">${p.isAI ? 'AI' : '玩家'}</span>`;
+    const delBtn = p.isAI ? `<button class="del-btn" onclick="socket.emit('removeAI',{index:${i}})">×</button>` : '';
+    div.innerHTML = `<span>${p.name}${p.isYou ? ' (你)' : ''}</span><span class="badge">${p.isAI ? 'AI' : '玩家'}</span>${delBtn}`;
     list.appendChild(div);
   });
+  // 观战席
+  const sp = $('lobby-spectators');
+  if (sp) {
+    sp.innerHTML = '<div class="section-title">观战席</div>';
+    state.spectators.forEach(s => {
+      const div = document.createElement('div');
+      div.className = 'player';
+      div.innerHTML = `<span>${s.name}</span><button class="add-btn" onclick="socket.emit('spectatorJoin')">+ 加入</button>`;
+      sp.appendChild(div);
+    });
+  }
 }
 
 // ===== 渲染游戏页 =====
