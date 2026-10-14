@@ -43,7 +43,6 @@ $('btn-leave').onclick = () => {
   showScreen('home');
 };
 $('btn-addai').onclick = () => socket.emit('addAI');
-$('btn-watch').onclick = () => socket.emit('becomeSpectator');
 $('btn-start').onclick = () => socket.emit('startGame');
 $('btn-uno').onclick = () => socket.emit('callUno');
 $('btn-grab').onclick = () => socket.emit('grabLead');
@@ -172,7 +171,8 @@ function renderLobby(state) {
       const circle = document.createElement('div');
       circle.className = 'empty-circle';
       circle.textContent = '+';
-      circle.title = '观战位';
+      circle.title = '点击进入观战席';
+      circle.onclick = () => socket.emit('becomeSpectator');
       row.appendChild(circle);
     }
     sp.appendChild(row);
