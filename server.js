@@ -276,7 +276,7 @@ function grabLead(room, playerId) {
 
 // 出牌（cardIndex 为玩家手牌中的下标）
 function playCard(room, playerId, cardIndex, chosenColor = null) {
-  if (room.status !== 'playing') return;
+  if (room.status !== 'playing' || room.paused) return;
   const player = room.players[room.currentIndex];
   if (!player || player.id !== playerId) return;
   if (room.wildPending) {
@@ -409,7 +409,7 @@ function resolveWildColor(room, playerId, color) {
 }
 
 function drawCard(room, playerId) {
-  if (room.status !== 'playing') return;
+  if (room.status !== 'playing' || room.paused) return;
   const player = room.players[room.currentIndex];
   if (!player || player.id !== playerId) return;
   if (room.wildPending) return;
