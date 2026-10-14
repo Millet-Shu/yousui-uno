@@ -301,6 +301,23 @@ function renderGame(state) {
   } else {
     $('my-rank').classList.add('hidden');
   }
+
+  // 游戏里的观战席
+  const gameSpList = $('game-spectator-list');
+  if (gameSpList) {
+    gameSpList.innerHTML = '';
+    const spectators = (state.spectators || []).filter(s => s !== null);
+    if (spectators.length === 0) {
+      gameSpList.innerHTML = '<div style="color:#666;font-size:12px;">暂无观战者</div>';
+    } else {
+      spectators.forEach(s => {
+        const div = document.createElement('div');
+        div.className = 'game-spectator-item';
+        div.innerHTML = `<div class="game-spectator-avatar">${s.name[0]}</div><div class="game-spectator-name">${s.name}</div>`;
+        gameSpList.appendChild(div);
+      });
+    }
+  }
   // 抢先手按钮
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing');
   // 牌组数量
