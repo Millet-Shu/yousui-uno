@@ -253,11 +253,12 @@ function renderGame(state) {
   const pauseOverlay = $('pause-overlay');
   if (state.paused) {
     pauseOverlay.classList.remove('hidden');
+    const pauseText = pauseOverlay.querySelector('.pause-text');
     if (state.isPausedByYou) {
-      $('.pause-text').textContent = '你暂停了游戏';
+      pauseText.textContent = '你暂停了游戏';
       $('btn-resume').classList.remove('hidden');
     } else {
-      $('.pause-text').textContent = '游戏暂停';
+      pauseText.textContent = '游戏暂停';
       $('btn-resume').classList.add('hidden');
     }
     $('pause-by').textContent = state.pausedBy + ' 暂停了游戏';
