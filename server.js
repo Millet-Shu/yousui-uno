@@ -141,6 +141,8 @@ function publicRoomState(room, selfPlayer) {
     pendingReport: room.pendingReport,
     myUnoCalled: !!room.unoCalled[selfPlayer.id],
     drawPileCount: room.drawPile.length,
+    maxPlayers: room.maxPlayers,
+    spectators: (room.spectators || []).map(s => ({ name: s.name })),
     log: room.log.slice(-20)
   };
 }
