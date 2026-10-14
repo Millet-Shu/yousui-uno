@@ -1,8 +1,13 @@
 // 连接服务器
 const socket = io();
 
-let myPlayerId = null;
-let myRoomCode = null;
+let myPlayerId = localStorage.getItem('uno_playerId') || null;
+let myRoomCode = localStorage.getItem('uno_roomCode') || null;
+
+// 页面加载时尝试重连
+if (myPlayerId) {
+  socket.emit('reconnect', { playerId: myPlayerId });
+}
 
 // DOM
 const $ = id => document.getElementById(id);
@@ -41,6 +46,8 @@ $('btn-menu').onclick = () => $('menu-dropdown').classList.toggle('hidden');
 socket.on('roomCreated', ({ code, playerId }) => {
   myPlayerId = playerId;
   myRoomCode = code;
+  localStorage.setItem('uno_playerId', playerId);
+  localStorage.setItem('uno_roomCode', code);
   $('lobby-code').textContent = code;
   showScreen('lobby');
 });
@@ -48,8 +55,18 @@ socket.on('roomCreated', ({ code, playerId }) => {
 socket.on('roomJoined', ({ code, playerId }) => {
   myPlayerId = playerId;
   myRoomCode = code;
+  if (playerId) {
+    localStorage.setItem('uno_playerId', playerId);
+    localStorage.setItem('uno_roomCode', code);
+  }
   $('lobby-code').textContent = code;
   showScreen('lobby');
+});
+
+// 重连成功，直接进游戏
+socket.on('reconnected', (state) => {
+  renderGame(state);
+  showScreen('game');
 });
 
 socket.on('errorMsg', (msg) => {
@@ -128,7 +145,8 @@ function renderGame(state) {
     if (p.handCount > 14) {
       overFlowHtml = `<div class="opp-card-back overflow">${p.handCount}</div>`;
     }
-    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}</div><div class="opp-hand">${cardsHtml}${overFlowHtml}</div>${penalty}${rankLabel}${reportBtn}`;
+    const onlineDot = p.offline ? '<span class="dot offline"></span>' : '<span class="dot online"></span>';
+    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}${onlineDot}</div><div class="opp-hand">${cardsHtml}${overFlowHtml}</div>${penalty}${rankLabel}${reportBtn}`;
     oppEl.appendChild(div);
   });
 

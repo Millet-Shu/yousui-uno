@@ -124,6 +124,7 @@ function publicRoomState(room, selfPlayer) {
       id: p.id,
       name: p.name,
       isAI: p.isAI,
+      offline: !!p.offline,
       handCount: p.hand.length,
       finished: !!p.finished,
       rank: p.rank || null,
@@ -620,16 +621,30 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     if (!currentRoom) return;
     const room = currentRoom;
-    const idx = room.players.findIndex(p => p.id === currentPlayerId);
-    if (idx >= 0) {
-      addLog(room, `${room.players[idx].name} 离开`);
-      room.players.splice(idx, 1);
-      if (room.players.length === 0) { rooms.delete(room.code); return; }
-      // 如果游戏中离开，且当前玩家走了，推进回合
-      if (room.status === 'playing') {
-        room.currentIndex = room.currentIndex % room.players.length;
-      }
+    const p = room.players.find(p => p.id === currentPlayerId);
+    if (p) {
+      p.socketId = null;
+      p.offline = true;
+      addLog(room, `${p.name} 掉线，等待重连`);
       broadcastRoom(room);
+    }
+  });
+
+  // 重连
+  socket.on('reconnect', ({ playerId }) => {
+    if (!playerId) return;
+    for (const room of rooms.values()) {
+      const p = room.players.find(p => p.id === playerId);
+      if (p) {
+        p.socketId = socket.id;
+        p.offline = false;
+        currentRoom = room;
+        currentPlayerId = playerId;
+        addLog(room, `${p.name} 重连回来`);
+        broadcastRoom(room);
+        socket.emit('reconnected', publicRoomState(room, p));
+        return;
+      }
     }
   });
 });
