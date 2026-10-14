@@ -413,7 +413,22 @@ function drawCard(room, playerId) {
   const player = room.players[room.currentIndex];
   if (!player || player.id !== playerId) return;
   if (room.wildPending) return;
-  if (room.pendingDraw > 0) return;
+
+  // 有罚牌要摸：摸完跳过回合
+  if (room.pendingDraw > 0) {
+    const drawn = drawCards(room, room.pendingDraw);
+    player.hand.push(...drawn);
+    addLog(room, `${player.name} 被罚摸了 ${room.pendingDraw} 张牌`);
+    room.pendingDraw = 0;
+    room.pendingDrawType = null;
+    advance(room);
+    broadcastRoom(room);
+    const next = room.players[room.currentIndex];
+    if (next && next.isAI && room.status === 'playing') {
+      setTimeout(() => aiTurn(room), 1000);
+    }
+    return;
+  }
 
   const drawn = drawCards(room, 1);
   if (drawn.length > 0) {
