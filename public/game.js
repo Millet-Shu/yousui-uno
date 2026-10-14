@@ -323,6 +323,15 @@ function renderGame(state) {
   }
   // 抢先手按钮
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing');
+  // 不出按钮：轮到自己时显示，显示要摸多少张
+  const myTurn = state.players.find(p => p.isYou && p.isCurrent);
+  if (myTurn && state.status === 'playing' && !state.wildPending) {
+    const drawNum = state.pendingDraw > 0 ? state.pendingDraw : 1;
+    $('btn-pass').textContent = `不出(摸${drawNum}张)`;
+    $('btn-pass').classList.remove('hidden');
+  } else {
+    $('btn-pass').classList.add('hidden');
+  }
   // 牌组数量
   $('draw-count').textContent = state.drawPileCount || 0;
 
@@ -406,5 +415,10 @@ document.querySelectorAll('.color-btn').forEach(btn => {
 
 // 摸牌堆点击
 document.querySelector('#draw-pile').onclick = () => {
+  socket.emit('drawCard');
+};
+
+// 不出按钮
+$('btn-pass').onclick = () => {
   socket.emit('drawCard');
 };
