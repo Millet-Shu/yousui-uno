@@ -293,6 +293,14 @@ function renderGame(state) {
     $('btn-uno').textContent = '喊"有岁"';
     $('btn-uno').style.background = '';
   }
+  // 显示自己的名次
+  const me = state.players.find(p => p.isYou);
+  if (me && me.finished) {
+    $('my-rank').textContent = `🏆 第 ${me.rank} 名`;
+    $('my-rank').classList.remove('hidden');
+  } else {
+    $('my-rank').classList.add('hidden');
+  }
   // 抢先手按钮
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing');
   // 牌组数量
