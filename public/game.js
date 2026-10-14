@@ -138,6 +138,7 @@ function renderLobby(state) {
       const circle = document.createElement('div');
       circle.className = 'empty-circle';
       circle.textContent = '+';
+      circle.title = '观战位';
       row.appendChild(circle);
     }
     sp.appendChild(row);

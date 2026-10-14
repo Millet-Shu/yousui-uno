@@ -403,7 +403,7 @@ function drawCard(room, playerId) {
   const drawn = drawCards(room, 1);
   if (drawn.length > 0) {
     player.hand.push(drawn[0]);
-    addLog(room, `${player.name} 摸到 ${cardName(drawn[0])}`);
+    addLog(room, `${player.name} 摸了一张牌`);
   }
   // 不自动出牌，轮到下一个人
   advance(room);
