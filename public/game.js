@@ -165,10 +165,11 @@ function renderLobby(state) {
       const div = document.createElement('div');
       div.className = 'spectator-avatar';
       div.textContent = s.name[0];  // 只显示第一个字
-      div.title = s.name;
+      div.title = s.name + (s.isYou ? '（点击回到玩家列表）' : '');
       div.onclick = () => {
-        // 观战者自己点可以回到玩家列表
-        if (s.isYou) socket.emit('spectatorJoin');
+        if (s.isYou) {
+          socket.emit('spectatorJoin');
+        }
       };
       row.appendChild(div);
     });
@@ -177,7 +178,7 @@ function renderLobby(state) {
       circle.className = 'empty-circle';
       circle.textContent = '+';
       circle.title = '点击进入观战席';
-      circle.onclick = () => socket.emit('becomeSpectator');
+      circle.onclick = () => socket.emit('becomeSpectator', { index: i });
       row.appendChild(circle);
     }
     sp.appendChild(row);

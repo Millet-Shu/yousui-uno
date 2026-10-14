@@ -665,17 +665,20 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 玩家主动进入观战席
-  socket.on('becomeSpectator', () => {
+  // 玩家主动进入观战席（可选择座位）
+  socket.on('becomeSpectator', ({ index } = {}) => {
     const room = currentRoom;
     if (!room || room.status !== 'waiting') return;
     const idx = room.players.findIndex(p => p.id === currentPlayerId);
     if (idx >= 0) {
       const p = room.players.splice(idx, 1)[0];
       const spId = 'sp_' + Date.now();
-      room.spectators.push({ id: spId, name: p.name, socketId: socket.id });
+      const sp = { id: spId, name: p.name, socketId: socket.id };
+      // 插入到指定位置，没传索引就加到最后
+      const insertAt = Math.min(index ?? room.spectators.length, 4);
+      room.spectators.splice(insertAt, 0, sp);
       addLog(room, `${p.name} 进入观战席`);
-      currentPlayerId = spId;  // 更新当前玩家ID
+      currentPlayerId = spId;
       broadcastRoom(room);
     }
   });
