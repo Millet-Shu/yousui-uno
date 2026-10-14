@@ -390,19 +390,21 @@ function renderGame(state) {
     div.textContent = cardText(card);
 
     if (playable) {
-      div.ondblclick = () => {
-        const realIndex = state.yourHand.indexOf(card);
-        if (card.type === 4 || card.type === 5) {
-          window._pendingCardIndex = realIndex;
-          $('color-modal').classList.remove('hidden');
-        } else {
-          socket.emit('playCard', { cardIndex: realIndex });
-        }
-      };
       div.onclick = () => {
-        // 单击选中高亮
-        document.querySelectorAll('.hand-card.selected').forEach(d => d.classList.remove('selected'));
-        div.classList.add('selected');
+        const realIndex = state.yourHand.indexOf(card);
+        // 如果已经选中了这张牌，再点一次就打出
+        if (div.classList.contains('selected')) {
+          if (card.type === 4 || card.type === 5) {
+            window._pendingCardIndex = realIndex;
+            $('color-modal').classList.remove('hidden');
+          } else {
+            socket.emit('playCard', { cardIndex: realIndex });
+          }
+        } else {
+          // 第一次点击：选中高亮
+          document.querySelectorAll('.hand-card.selected').forEach(d => d.classList.remove('selected'));
+          div.classList.add('selected');
+        }
       };
     } else {
       div.classList.add('dim');
