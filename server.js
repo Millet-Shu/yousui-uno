@@ -401,20 +401,9 @@ function drawCard(room, playerId) {
   if (drawn.length > 0) {
     player.hand.push(drawn[0]);
     addLog(room, `${player.name} 摸到 ${cardName(drawn[0])}`);
-    // 如果摸到的牌能出，自动打出
-    if (isPlayable(drawn[0], room.topCard, room.currentColor, room.pendingDraw)) {
-      addLog(room, `${player.name} 直接打出 ${cardName(drawn[0])}`);
-      player.hand.pop();
-      room.discardPile.push(drawn[0]);
-      room.topCard = drawn[0];
-      handleCardEffect(room, player, drawn[0], null);
-      advance(room);
-    } else {
-      advance(room);
-    }
-  } else {
-    advance(room);
   }
+  // 不自动出牌，轮到下一个人
+  advance(room);
   broadcastRoom(room);
 
   const next = room.players[room.currentIndex];
