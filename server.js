@@ -744,6 +744,8 @@ io.on('connection', (socket) => {
         return;
       }
     }
+    // 找不到房间，清除重连状态
+    socket.emit('reconnectFailed');
   });
 });
 

@@ -95,6 +95,12 @@ socket.on('reconnected', (state) => {
   showScreen('game');
 });
 
+socket.on('reconnectFailed', () => {
+  localStorage.removeItem('uno_playerId');
+  localStorage.removeItem('uno_roomCode');
+  showScreen('home');
+});
+
 socket.on('errorMsg', (msg) => {
   $('home-error').textContent = msg;
 });
