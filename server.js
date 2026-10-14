@@ -97,7 +97,7 @@ function createRoom(maxPlayers = 4) {
     code,
     maxPlayers,
     players: [],        // {id, name, socketId, isAI, hand: []}
-    spectators: [],     // 观战席
+    spectators: [null, null, null, null, null],     // 观战席固定5个位置，空的存null
     drawPile: [],
     discardPile: [],
     topCard: null,
