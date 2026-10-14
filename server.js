@@ -685,6 +685,18 @@ io.on('connection', (socket) => {
     if (next && next.isAI) setTimeout(() => aiTurn(room), 1000);
   });
 
+  socket.on('leaveRoom', () => {
+    const room = currentRoom;
+    if (!room) return;
+    const idx = room.players.findIndex(p => p.id === currentPlayerId);
+    if (idx >= 0) {
+      room.players.splice(idx, 1);
+      addLog(room, `${currentPlayerId} 退出房间`);
+      if (room.players.length === 0) rooms.delete(room.code);
+      broadcastRoom(room);
+    }
+  });
+
   socket.on('playCard', ({ cardIndex, chosenColor }) => {
     if (currentRoom) playCard(currentRoom, currentPlayerId, cardIndex, chosenColor);
   });

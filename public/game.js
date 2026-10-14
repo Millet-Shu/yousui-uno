@@ -60,7 +60,11 @@ $('btn-endgame').onclick = () => {
 };
 $('btn-leave-room').onclick = () => {
   $('menu-dropdown').classList.add('hidden');
-  showConfirm('确定要退出房间吗？', () => { localStorage.clear(); location.reload(); });
+  showConfirm('确定要退出房间吗？', () => {
+    socket.emit('leaveRoom');
+    localStorage.clear();
+    location.reload();
+  });
 };
 $('btn-pause').onclick = () => {
   $('menu-dropdown').classList.add('hidden');
