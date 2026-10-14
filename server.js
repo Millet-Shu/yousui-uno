@@ -657,6 +657,19 @@ io.on('connection', (socket) => {
     }
   });
 
+  // 玩家主动进入观战席
+  socket.on('becomeSpectator', () => {
+    const room = currentRoom;
+    if (!room || room.status !== 'waiting') return;
+    const idx = room.players.findIndex(p => p.id === currentPlayerId);
+    if (idx >= 0) {
+      const p = room.players.splice(idx, 1)[0];
+      room.spectators.push({ id: 'sp_' + Date.now(), name: p.name, socketId: socket.id });
+      addLog(room, `${p.name} 进入观战席`);
+      broadcastRoom(room);
+    }
+  });
+
   socket.on('grabLead', () => {
     if (currentRoom) grabLead(currentRoom, currentPlayerId);
   });

@@ -43,6 +43,7 @@ $('btn-leave').onclick = () => {
   showScreen('home');
 };
 $('btn-addai').onclick = () => socket.emit('addAI');
+$('btn-watch').onclick = () => socket.emit('becomeSpectator');
 $('btn-start').onclick = () => socket.emit('startGame');
 $('btn-uno').onclick = () => socket.emit('callUno');
 $('btn-grab').onclick = () => socket.emit('grabLead');
