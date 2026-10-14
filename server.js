@@ -84,11 +84,13 @@ function genRoomCode() {
   return code;
 }
 
-function createRoom() {
+function createRoom(maxPlayers = 4) {
   const code = genRoomCode();
   rooms.set(code, {
     code,
+    maxPlayers,
     players: [],        // {id, name, socketId, isAI, hand: []}
+    spectators: [],     // 观战席
     drawPile: [],
     discardPile: [],
     topCard: null,
@@ -399,8 +401,20 @@ function drawCard(room, playerId) {
   if (drawn.length > 0) {
     player.hand.push(drawn[0]);
     addLog(room, `${player.name} 摸到 ${cardName(drawn[0])}`);
+    // 如果摸到的牌能出，自动打出
+    if (isPlayable(drawn[0], room.topCard, room.currentColor, room.pendingDraw)) {
+      addLog(room, `${player.name} 直接打出 ${cardName(drawn[0])}`);
+      player.hand.pop();
+      room.discardPile.push(drawn[0]);
+      room.topCard = drawn[0];
+      handleCardEffect(room, player, drawn[0], null);
+      advance(room);
+    } else {
+      advance(room);
+    }
+  } else {
+    advance(room);
   }
-  advance(room);
   broadcastRoom(room);
 
   const next = room.players[room.currentIndex];
@@ -506,10 +520,11 @@ io.on('connection', (socket) => {
   let currentRoom = null;
   let currentPlayerId = null;
 
-  socket.on('createRoom', ({ name }) => {
+  socket.on('createRoom', ({ name, maxPlayers }) => {
     name = (name || '').trim();
     if (!name) { socket.emit('errorMsg', '请输入名字'); return; }
-    const room = createRoom();
+    maxPlayers = Math.min(Math.max(parseInt(maxPlayers) || 4, 2), 8);
+    const room = createRoom(maxPlayers);
     const player = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id, isAI: false, hand: [] };
     room.players.push(player);
     currentRoom = room;
@@ -525,7 +540,22 @@ io.on('connection', (socket) => {
     const room = rooms.get(code);
     if (!room) { socket.emit('errorMsg', '房间不存在'); return; }
     if (room.status !== 'waiting') { socket.emit('errorMsg', '游戏已开始'); return; }
-    if (room.players.length >= 4) { socket.emit('errorMsg', '房间已满'); return; }
+
+    if (room.players.length >= room.maxPlayers) {
+      // 进观战席
+      room.spectators.push({ id: socket.id + '_' + Date.now(), name: name, socketId: socket.id });
+      currentRoom = room;
+      currentPlayerId = null;
+      addLog(room, `${name} 进入观战席`);
+      socket.emit('roomJoined', { code: room.code, playerId: null, spectator: true });
+      io.emit('roomUpdate', {
+        code: room.code,
+        players: room.players.map(p => ({ name: p.name, isAI: p.isAI })),
+        spectators: room.spectators.map(s => s.name),
+        maxPlayers: room.maxPlayers
+      });
+      return;
+    }
 
     const player = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id, isAI: false, hand: [] };
     room.players.push(player);

@@ -16,7 +16,8 @@ function showScreen(name) {
 $('btn-create').onclick = () => {
   const name = $('input-name').value.trim();
   if (!name) { $('home-error').textContent = '请输入你的名字'; return; }
-  socket.emit('createRoom', { name });
+  const maxPlayers = parseInt($('input-maxplayers').value);
+  socket.emit('createRoom', { name, maxPlayers });
 };
 
 $('btn-join').onclick = () => {
