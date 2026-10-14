@@ -45,10 +45,17 @@ function shuffle(arr, rng = Math.random) {
 
 function isWild(c) { return c.type === T.WILD || c.type === T.WILD_DRAW_FOUR; }
 
-function isPlayable(c, topCard, currentColor, pendingDraw) {
-  // 有叠加罚牌时，只有+2/+4能出
+function isPlayable(c, topCard, currentColor, pendingDraw, pendingDrawType) {
+  // 有叠加罚牌时
   if (pendingDraw > 0) {
-    return c.type === T.DRAW_TWO || c.type === T.WILD_DRAW_FOUR;
+    // +4正在生效，只能出+4
+    if (pendingDrawType === T.WILD_DRAW_FOUR) {
+      return c.type === T.WILD_DRAW_FOUR;
+    }
+    // +2正在生效，可以出+2或+4
+    if (pendingDrawType === T.DRAW_TWO) {
+      return c.type === T.DRAW_TWO || c.type === T.WILD_DRAW_FOUR;
+    }
   }
   if (isWild(c)) return true;
   if (c.color === currentColor) return true;
@@ -233,6 +240,7 @@ function grabLead(room, playerId) {
   // 起始牌是加牌，加给先手
   if (starter.type === T.DRAW_TWO) {
     room.pendingDraw += 2;
+    room.pendingDrawType = T.DRAW_TWO;
     const drawn = drawCards(room, 2);
     room.players[room.currentIndex].hand.push(...drawn);
     addLog(room, `${room.players[room.currentIndex].name} 起始罚摸2张`);
@@ -274,7 +282,7 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
 
   const card = player.hand[cardIndex];
   if (!card) return;
-  if (!isPlayable(card, room.topCard, room.currentColor, room.pendingDraw)) return;
+  if (!isPlayable(card, room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType)) return;
 
   player.hand.splice(cardIndex, 1);
   room.discardPile.push(card);
@@ -319,6 +327,7 @@ function handleCardEffect(room, player, card, chosenColor) {
     case T.DRAW_TWO:
       room.currentColor = card.color;
       room.pendingDraw += 2;
+      room.pendingDrawType = T.DRAW_TWO;
       advance(room);
       break;
     case T.WILD:
@@ -332,6 +341,7 @@ function handleCardEffect(room, player, card, chosenColor) {
       break;
     case T.WILD_DRAW_FOUR:
       room.pendingDraw += 4;
+      room.pendingDrawType = T.WILD_DRAW_FOUR;
       if (chosenColor) {
         room.currentColor = chosenColor;
         addLog(room, `${player.name} 指定颜色 ${colorName(chosenColor)}`);
@@ -470,7 +480,7 @@ function aiTurn(room) {
   // 找可出的牌
   const playable = [];
   for (let i = 0; i < player.hand.length; i++) {
-    if (isPlayable(player.hand[i], room.topCard, room.currentColor, room.pendingDraw)) playable.push(i);
+    if (isPlayable(player.hand[i], room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType)) playable.push(i);
   }
 
   if (playable.length === 0) {
