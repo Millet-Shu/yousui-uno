@@ -253,9 +253,14 @@ function renderGame(state) {
   const pauseOverlay = $('pause-overlay');
   if (state.paused) {
     pauseOverlay.classList.remove('hidden');
+    if (state.isPausedByYou) {
+      $('.pause-text').textContent = '你暂停了游戏';
+      $('btn-resume').classList.remove('hidden');
+    } else {
+      $('.pause-text').textContent = '游戏暂停';
+      $('btn-resume').classList.add('hidden');
+    }
     $('pause-by').textContent = state.pausedBy + ' 暂停了游戏';
-    // 只有暂停的人能看到取消按钮
-    $('btn-resume').classList.toggle('hidden', !state.isPausedByYou);
   } else {
     pauseOverlay.classList.add('hidden');
   }
