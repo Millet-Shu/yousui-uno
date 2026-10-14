@@ -571,6 +571,22 @@ io.on('connection', (socket) => {
     startGame(room);
   });
 
+  socket.on('endGame', () => {
+    const room = currentRoom;
+    if (!room) return;
+    room.status = 'waiting';
+    room.players.forEach(p => { p.hand = []; p.finished = false; p.rank = null; });
+    room.drawPile = [];
+    room.discardPile = [];
+    room.topCard = null;
+    room.pendingDraw = 0;
+    room.wildPending = false;
+    room.pendingReport = null;
+    room.unoCalled = {};
+    addLog(room, '回到房间等待区');
+    broadcastRoom(room);
+  });
+
   socket.on('addAI', () => {
     const room = currentRoom;
     if (!room || room.status !== 'waiting') return;

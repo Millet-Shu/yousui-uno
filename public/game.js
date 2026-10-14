@@ -39,7 +39,7 @@ $('btn-start').onclick = () => socket.emit('startGame');
 $('btn-uno').onclick = () => socket.emit('callUno');
 $('btn-grab').onclick = () => socket.emit('grabLead');
 $('btn-restart').onclick = () => { socket.emit('restartGame'); $('menu-dropdown').classList.add('hidden'); };
-$('btn-endgame').onclick = () => location.reload();
+$('btn-endgame').onclick = () => { socket.emit('endGame'); $('menu-dropdown').classList.add('hidden'); };
 $('btn-menu').onclick = () => $('menu-dropdown').classList.toggle('hidden');
 
 // ===== 服务器事件 =====
