@@ -144,6 +144,7 @@ function publicRoomState(room, selfPlayer) {
       handCount: p.hand.length,
       finished: !!p.finished,
       rank: p.rank || null,
+      unoCalled: !!room.unoCalled[p.id],  // 有没有喊有岁
       isYou: p.id === selfId,
       isCurrent: room.players[room.currentIndex] && room.players[room.currentIndex].id === p.id
     })),
@@ -315,7 +316,7 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   // 出完牌后才显示喊了有岁
   if (room.unoCalled[player.id] && player.hand.length <= 2) {
     addLog(room, `${player.name} 喊了"有岁"`);
-    room.unoCalled[player.id] = false; // 出完牌重置
+    // 不立即清除，到下一家再清除
   }
 
   handleCardEffect(room, player, card, chosenColor);
@@ -460,6 +461,10 @@ function drawCard(room, playerId) {
 }
 
 function advance(room) {
+  // 到下一家时，清除所有玩家的有岁标记
+  for (const pid in room.unoCalled) {
+    room.unoCalled[pid] = false;
+  }
   let next = nextIndex(room, 1);
   let guard = 0;
   while (room.players[next] && room.players[next].finished && guard < room.players.length) {
