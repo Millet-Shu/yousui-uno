@@ -152,7 +152,8 @@ function renderLobby(state) {
     const div = document.createElement('div');
     div.className = 'player';
     const delBtn = p.isAI ? `<button class="del-btn" onclick="socket.emit('removeAI',{index:${i}})">×</button>` : '';
-    div.innerHTML = `<span>${p.name}${p.isYou ? ' (你)' : ''}</span><span class="badge">${p.isAI ? 'AI' : '玩家'}</span>${delBtn}`;
+    const ownerBadge = p.isOwner ? `<span class="owner-badge">房主</span>` : '';
+    div.innerHTML = `<span>${p.name}${p.isYou ? ' (你)' : ''} ${ownerBadge}</span><span class="badge">${p.isAI ? 'AI' : '玩家'}</span>${delBtn}`;
     list.appendChild(div);
   });
   // 空位加号长方形（观战者点击回到玩家列表）
@@ -267,7 +268,8 @@ function renderGame(state) {
       overFlowHtml = `<div class="opp-card-back overflow">${p.handCount}</div>`;
     }
     const onlineDot = p.offline ? '<span class="dot offline"></span>' : '<span class="dot online"></span>';
-    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}${onlineDot}</div><div class="opp-hand">${cardsHtml}${overFlowHtml}</div>${unoLabel}${penalty}${rankLabel}${reportBtn}`;
+    const ownerBadge = p.isOwner ? `<span class="owner-badge-small">房主</span>` : '';
+    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}${onlineDot} ${ownerBadge}</div><div class="opp-hand">${cardsHtml}${overFlowHtml}</div>${unoLabel}${penalty}${rankLabel}${reportBtn}`;
     oppEl.appendChild(div);
   });
 

@@ -145,6 +145,7 @@ function publicRoomState(room, selfPlayer) {
       finished: !!p.finished,
       rank: p.rank || null,
       unoCalled: !!room.unoCalled[p.id],  // 有没有喊有岁
+      isOwner: p.id === room.ownerSocketId || p.socketId === room.ownerSocketId,  // 是不是房主
       isYou: p.id === selfId,
       isCurrent: room.players[room.currentIndex] && room.players[room.currentIndex].id === p.id
     })),
