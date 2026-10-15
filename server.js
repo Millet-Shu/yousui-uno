@@ -166,7 +166,7 @@ function publicRoomState(room, selfPlayer) {
     maxPlayers: room.maxPlayers,
     justDrew: !!room.justDrew,  // 玩家刚摸了牌，可以选择打出或跳过
     isOwner: selfPlayer && selfPlayer.socketId === room.ownerSocketId,
-    spectators: (room.spectators || []).slice(0, 5).map(s => s ? { name: s.name, isYou: s.id === selfId } : null),
+    spectators: (room.spectators || []).slice(0, 5).map(s => s ? { name: s.name, isYou: s.id === selfId, isOwner: s.socketId === room.ownerSocketId } : null),
     log: room.log.slice(-20)
   };
 }

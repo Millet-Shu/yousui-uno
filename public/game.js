@@ -177,6 +177,8 @@ function renderLobby(state) {
     while (spList.length < 5) spList.push(null);
     spList.forEach((s, i) => {
       if (s) {
+        const container = document.createElement('div');
+        container.className = 'spectator-container';
         const div = document.createElement('div');
         div.className = 'spectator-avatar';
         div.textContent = s.name[0];
@@ -185,7 +187,15 @@ function renderLobby(state) {
         if (!s.isYou) {
           div.onclick = () => socket.emit('moveSpectator', { index: i });
         }
-        row.appendChild(div);
+        container.appendChild(div);
+        // 房主标签
+        if (s.isOwner) {
+          const badge = document.createElement('div');
+          badge.className = 'owner-badge-small';
+          badge.textContent = '房主';
+          container.appendChild(badge);
+        }
+        row.appendChild(container);
       } else {
         const circle = document.createElement('div');
         circle.className = 'empty-circle';
