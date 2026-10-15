@@ -301,6 +301,12 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   if (!card) return;
   if (!isPlayable(card, room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType)) return;
 
+  // 出牌前，先保存当前玩家的有岁标记，然后清除所有
+  const myUnoCalled = !!room.unoCalled[player.id];
+  for (const pid in room.unoCalled) {
+    room.unoCalled[pid] = false;
+  }
+
   player.hand.splice(cardIndex, 1);
   room.discardPile.push(card);
   room.topCard = card;
@@ -314,9 +320,9 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   }
 
   // 出完牌后才显示喊了有岁
-  if (room.unoCalled[player.id] && player.hand.length <= 2) {
+  if (myUnoCalled && player.hand.length <= 2) {
     addLog(room, `${player.name} 喊了"有岁"`);
-    // 不立即清除，到下一家再清除
+    room.unoCalled[player.id] = true;  // 恢复当前玩家的标记
   }
 
   handleCardEffect(room, player, card, chosenColor);
@@ -461,10 +467,6 @@ function drawCard(room, playerId) {
 }
 
 function advance(room) {
-  // 到下一家时，清除所有玩家的有岁标记
-  for (const pid in room.unoCalled) {
-    room.unoCalled[pid] = false;
-  }
   let next = nextIndex(room, 1);
   let guard = 0;
   while (room.players[next] && room.players[next].finished && guard < room.players.length) {
