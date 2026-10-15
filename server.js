@@ -568,6 +568,10 @@ function aiTurn(room) {
   // AI 75%概率喊"有岁"（出牌后剩1张时）
   if (player.hand.length - 1 === 1 && Math.random() < 0.75) {
     room.unoCalled[player.id] = true;
+    // AI喊了有岁，清除针对自己的举报
+    if (room.pendingReport && room.pendingReport.playerId === player.id) {
+      room.pendingReport = null;
+    }
   }
 
   playCard(room, player.id, bestIdx, chosenColor);
@@ -796,6 +800,10 @@ io.on('connection', (socket) => {
   socket.on('callUno', () => {
     if (currentRoom && currentPlayerId) {
       currentRoom.unoCalled[currentPlayerId] = !currentRoom.unoCalled[currentPlayerId];
+      // 喊了有岁，清除针对自己的举报
+      if (currentRoom.pendingReport && currentRoom.pendingReport.playerId === currentPlayerId) {
+        currentRoom.pendingReport = null;
+      }
       broadcastRoom(currentRoom);
     }
   });
