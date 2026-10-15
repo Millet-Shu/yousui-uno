@@ -313,7 +313,7 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   room.justDrew = false;  // 打出牌后清除摸牌状态
 
   // 没喊有岁就出到剩<=1张，可以被举报（游戏进行中才行，赢了的人不举报）
-  if (room.status === 'playing' && player.hand.length > 0 && player.hand.length <= 1 && !room.unoCalled[player.id]) {
+  if (room.status === 'playing' && player.hand.length > 0 && player.hand.length <= 1 && !myUnoCalled) {
     room.pendingReport = { playerId: player.id, playerName: player.name };
   } else {
     room.pendingReport = null;
