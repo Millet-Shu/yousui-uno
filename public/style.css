@@ -235,7 +235,7 @@ input:focus { border-color: #6c7bff; }
 
 #hand-area {
   position: absolute;
-  bottom: 10px;
+  bottom: 50px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -244,6 +244,10 @@ input:focus { border-color: #6c7bff; }
   max-width: 95vw;
   overflow-x: auto;
   padding: 20px 10px 10px;
+  scrollbar-width: none; /* Firefox */
+}
+#hand-area::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 .hand-card {
