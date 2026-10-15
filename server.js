@@ -597,6 +597,7 @@ io.on('connection', (socket) => {
     room.ownerSocketId = socket.id;  // 设置房主的socketId（不变）
     currentRoom = room;
     currentPlayerId = player.id;
+    console.log('创建房间:', room.code, 'maxPlayers:', room.maxPlayers, '房主:', player.name);
     socket.emit('roomCreated', { code: room.code, playerId: player.id });
     broadcastRoom(room);
   });
