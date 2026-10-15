@@ -793,6 +793,9 @@ io.on('connection', (socket) => {
       if (room.players.length === 0) rooms.delete(room.code);
       broadcastRoom(room);
     }
+    // 清除当前房间状态
+    currentRoom = null;
+    currentPlayerId = null;
   });
 
   socket.on('playCard', ({ cardIndex, chosenColor }) => {
