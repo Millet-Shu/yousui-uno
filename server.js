@@ -785,14 +785,22 @@ io.on('connection', (socket) => {
   socket.on('leaveRoom', () => {
     const room = currentRoom;
     if (!room) return;
+    // 从玩家列表移除
     const idx = room.players.findIndex(p => p.id === currentPlayerId);
     if (idx >= 0) {
       const p = room.players[idx];
       room.players.splice(idx, 1);
       addLog(room, `${p.name} 退出房间`);
-      if (room.players.length === 0) rooms.delete(room.code);
-      broadcastRoom(room);
     }
+    // 从观战席移除
+    const specIdx = (room.spectators || []).findIndex(s => s && s.id === currentPlayerId);
+    if (specIdx >= 0) {
+      const s = room.spectators[specIdx];
+      room.spectators[specIdx] = null;
+      addLog(room, `${s.name} 退出观战席`);
+    }
+    if (room.players.length === 0) rooms.delete(room.code);
+    broadcastRoom(room);
     // 清除当前房间状态
     currentRoom = null;
     currentPlayerId = null;
