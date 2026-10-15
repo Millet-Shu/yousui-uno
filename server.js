@@ -504,6 +504,16 @@ function aiTurn(room) {
   const player = room.players[room.currentIndex];
   if (!player || !player.isAI) return;
 
+  // AI举报：如果有玩家没喊有岁就剩1张牌，AI直接举报
+  if (room.pendingReport) {
+    const target = room.players.find(p => p.id === room.pendingReport.playerId);
+    if (target) {
+      addLog(room, `AI举报了 ${target.name} 没喊有岁！罚摸2张`);
+      target.hand.push(...drawCards(room, 2));
+      room.pendingReport = null;
+    }
+  }
+
   if (room.wildPending) {
     // AI 选颜色：手牌最多的颜色
     const counts = {};

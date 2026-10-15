@@ -253,7 +253,7 @@ function renderGame(state) {
     div.style.transform = 'translate(-50%, -50%)';
     const penalty = (p.isCurrent && state.pendingDraw > 0) ? `<div class="penalty">+${state.pendingDraw}</div>` : '';
     const rankLabel = p.finished ? `<div class="rank">第 ${p.rank} 名</div>` : '';
-    const unoLabel = p.unoCalled ? `<div class="uno-called">（有岁！）</div>` : '';
+    const unoLabel = p.unoCalled ? `<div class="uno-called">📢 有岁！</div>` : '';
     const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id)
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
     // 手牌背面叠放
@@ -267,7 +267,7 @@ function renderGame(state) {
       overFlowHtml = `<div class="opp-card-back overflow">${p.handCount}</div>`;
     }
     const onlineDot = p.offline ? '<span class="dot offline"></span>' : '<span class="dot online"></span>';
-    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}${onlineDot}</div>${unoLabel}<div class="opp-hand">${cardsHtml}${overFlowHtml}</div>${penalty}${rankLabel}${reportBtn}`;
+    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}${onlineDot}</div><div class="opp-hand">${cardsHtml}${overFlowHtml}</div>${unoLabel}${penalty}${rankLabel}${reportBtn}`;
     oppEl.appendChild(div);
   });
 
