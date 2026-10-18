@@ -210,7 +210,7 @@ input:focus { border-color: #6c7bff; }
 
 #status-bar {
   position: absolute;
-  bottom: 180px;
+  bottom: 220px;
   left: 10px;
   background: rgba(0,0,0,0.4);
   padding: 6px 12px;
@@ -313,5 +313,5 @@ input:focus { border-color: #6c7bff; }
   .btn-uno { bottom: 220px; font-size: 12px; padding: 4px 12px; }
   .btn-pass { bottom: 220px; }
   .btn-skip { bottom: 220px; }
-  #status-bar { bottom: 150px; }
+  #status-bar { bottom: 200px; }
 }

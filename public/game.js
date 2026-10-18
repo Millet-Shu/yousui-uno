@@ -254,11 +254,11 @@ function renderGame(state) {
   const opponents = state.players.filter(p => !p.isYou);
   const n = opponents.length;
   opponents.forEach((p, i) => {
-    // 从右边(0°)到左边(180°)均匀分布
+    // 从右边(0°)到左边(180°)均匀分布，更靠上一些
     const angle = (180 / (n + 1)) * (i + 1);
     const rad = angle * Math.PI / 180;
-    const x = 50 + 42 * Math.cos(rad);  // 百分比
-    const y = 50 - 38 * Math.sin(rad);  // 往上为负
+    const x = 50 + 45 * Math.cos(rad);  // 百分比，更宽
+    const y = 35 - 28 * Math.sin(rad);  // 更靠上
     const div = document.createElement('div');
     div.className = 'opponent ' + (p.isCurrent ? ' current' : '');
     div.style.left = x + '%';
