@@ -24,6 +24,7 @@ $('btn-create').onclick = () => {
   const name = $('input-name').value.trim();
   if (!name) { $('home-error').textContent = '请输入你的名字'; return; }
   const maxPlayers = parseInt($('input-maxplayers').value);
+  leftRoom = false;  // 重置离开标志，允许接收新房间的roomUpdate事件
   socket.emit('createRoom', { name, maxPlayers });
 };
 
@@ -32,6 +33,7 @@ $('btn-join').onclick = () => {
   if (!name) { $('home-error').textContent = '请输入你的名字'; return; }
   const code = $('input-code').value.trim();
   if (!code) { $('home-error').textContent = '请输入房间码'; return; }
+  leftRoom = false;  // 重置离开标志
   socket.emit('joinRoom', { code, name });
 };
 
