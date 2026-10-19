@@ -4,6 +4,8 @@ const socket = io();
 let myPlayerId = localStorage.getItem('uno_playerId') || null;
 let myRoomCode = localStorage.getItem('uno_roomCode') || null;
 let leftRoom = false;  // 离开房间标志
+let showHandCount = true;  // 是否显示手牌数量
+let currentGameState = null;  // 保存当前游戏状态，方便重新渲染
 
 // 页面加载时尝试重连
 // 暂时去掉自动重连，避免创建新房间时被旧房间拦截
@@ -51,6 +53,12 @@ $('btn-uno').onclick = () => socket.emit('callUno');
 $('btn-grab').onclick = () => socket.emit('grabLead');
 $('btn-skip').onclick = () => socket.emit('skipTurn');
 $('btn-menu').onclick = () => $('menu-dropdown').classList.toggle('hidden');
+// 显示手牌数量开关
+$('toggle-hand-count').onchange = (e) => {
+  showHandCount = e.target.checked;
+  // 重新渲染游戏界面
+  if (currentGameState) renderGame(currentGameState);
+};
 
 // 确认弹窗
 let confirmCallback = null;
@@ -228,6 +236,7 @@ function cardText(c) {
 }
 
 function renderGame(state) {
+  currentGameState = state;  // 保存当前状态
   // 顶牌（万能牌只边框显示选中颜色）
   const top = state.topCard;
   const topEl = $('top-card');
@@ -269,15 +278,21 @@ function renderGame(state) {
     const unoLabel = p.unoCalled ? `<div class="uno-called">📢 有岁！</div>` : '';
     const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id)
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
-    // 手牌背面叠放
-    const showCount = Math.min(p.handCount, 14);
+    // 手牌背面：根据开关决定是否显示数量
     let cardsHtml = '';
-    for (let j = 0; j < showCount; j++) {
-      cardsHtml += `<div class="opp-card-back" style="left:${j * 8}px"></div>`;
-    }
     let overFlowHtml = '';
-    if (p.handCount > 14) {
-      overFlowHtml = `<div class="opp-card-back overflow">${p.handCount}</div>`;
+    if (showHandCount) {
+      // 显示数量：卡片叠放
+      const showCount = Math.min(p.handCount, 14);
+      for (let j = 0; j < showCount; j++) {
+        cardsHtml += `<div class="opp-card-back" style="left:${j * 8}px"></div>`;
+      }
+      if (p.handCount > 14) {
+        overFlowHtml = `<div class="opp-card-back overflow">${p.handCount}</div>`;
+      }
+    } else {
+      // 不显示数量：只显示一个卡片背面
+      cardsHtml = `<div class="opp-card-back"></div>`;
     }
     const onlineDot = p.offline ? '<span class="dot offline"></span>' : '<span class="dot online"></span>';
     const ownerBadge = p.isOwner ? `<span class="owner-badge-small">房主</span>` : '';

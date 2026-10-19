@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>有岁 UNO</title>
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 
@@ -79,6 +79,13 @@
       <span id="status-text">准备中...</span>
       <button id="btn-menu" class="btn-menu">☰</button>
       <div id="menu-dropdown" class="menu-dropdown hidden">
+        <div class="menu-item">
+          <span>显示手牌数量</span>
+          <label class="switch">
+            <input type="checkbox" id="toggle-hand-count" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
         <button id="btn-restart">重开游戏</button>
         <button id="btn-pause">暂停游戏</button>
         <button id="btn-endgame">结束游戏</button>
@@ -138,6 +145,6 @@
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="game.js?v=6"></script>
+<script src="game.js?v=7"></script>
 </body>
 </html>
