@@ -278,25 +278,21 @@ function renderGame(state) {
     const unoLabel = p.unoCalled ? `<div class="uno-called">📢 有岁！</div>` : '';
     const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id)
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
-    // 手牌背面：根据开关决定是否显示数量
+    // 手牌背面叠放
+    const showCount = Math.min(p.handCount, 14);
     let cardsHtml = '';
-    let overFlowHtml = '';
-    if (showHandCount) {
-      // 显示数量：卡片叠放
-      const showCount = Math.min(p.handCount, 14);
-      for (let j = 0; j < showCount; j++) {
-        cardsHtml += `<div class="opp-card-back" style="left:${j * 8}px"></div>`;
-      }
-      if (p.handCount > 14) {
-        overFlowHtml = `<div class="opp-card-back overflow">${p.handCount}</div>`;
-      }
-    } else {
-      // 不显示数量：只显示一个卡片背面
-      cardsHtml = `<div class="opp-card-back"></div>`;
+    for (let j = 0; j < showCount; j++) {
+      cardsHtml += `<div class="opp-card-back" style="left:${j * 8}px"></div>`;
     }
+    let overFlowHtml = '';
+    if (p.handCount > 14) {
+      overFlowHtml = `<div class="opp-card-back overflow">${p.handCount}</div>`;
+    }
+    // 手牌数量数字（根据开关显示）
+    const countLabel = showHandCount ? `<div class="hand-count">${p.handCount}张</div>` : '';
     const onlineDot = p.offline ? '<span class="dot offline"></span>' : '<span class="dot online"></span>';
     const ownerBadge = p.isOwner ? `<span class="owner-badge-small">房主</span>` : '';
-    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}${onlineDot} ${ownerBadge}</div><div class="opp-hand">${cardsHtml}${overFlowHtml}</div>${unoLabel}${penalty}${rankLabel}${reportBtn}`;
+    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}${onlineDot} ${ownerBadge}</div><div class="opp-hand">${cardsHtml}${overFlowHtml}</div>${countLabel}${unoLabel}${penalty}${rankLabel}${reportBtn}`;
     oppEl.appendChild(div);
   });
 
