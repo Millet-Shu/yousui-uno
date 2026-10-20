@@ -290,11 +290,11 @@ function renderGame(state) {
       // 手牌多：只显示一张牌，数字由开关控制显示
       cardsHtml = `<div class="opp-card-back"></div>`;
     }
-    // 手牌数量数字（由开关控制，只显示一次）
+    // 手牌数量数字（由开关控制，只显示一次，放在卡片下面）
     const countLabel = showHandCount ? `<div class="hand-count">${p.handCount}张</div>` : '';
     const onlineDot = p.offline ? '<span class="dot offline"></span>' : '<span class="dot online"></span>';
     const ownerBadge = p.isOwner ? `<span class="owner-badge-small">房主</span>` : '';
-    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}${onlineDot} ${ownerBadge}</div><div class="opp-hand">${cardsHtml}${countLabel}</div>${unoLabel}${penalty}${rankLabel}${reportBtn}`;
+    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}${onlineDot} ${ownerBadge}</div><div class="opp-hand">${cardsHtml}</div>${countLabel}${unoLabel}${penalty}${rankLabel}${reportBtn}`;
     oppEl.appendChild(div);
   });
 
