@@ -257,21 +257,21 @@ function renderGame(state) {
     $('top-label').textContent = '?';
   }
 
-  // 对手位置：分散布局，不要都挤在上半圆
+  // 对手位置：先北、再东、再西，然后左右交替加人
   const oppEl = $('opponents');
   oppEl.innerHTML = '';
   const opponents = state.players.filter(p => !p.isYou);
   const n = opponents.length;
   
-  // 定义位置点：左列、顶列、右列
+  // 位置顺序：先北（对面），然后东、西交替
   const positions = [
-    { x: 15, y: 25 },   // 左上
-    { x: 15, y: 45 },   // 左中
-    { x: 15, y: 65 },   // 左下
-    { x: 50, y: 18 },   // 顶中
-    { x: 85, y: 25 },   // 右上
-    { x: 85, y: 45 },   // 右中
-    { x: 85, y: 65 },   // 右下
+    { x: 50, y: 20 },   // 1号：北（对面）
+    { x: 85, y: 35 },   // 2号：东1（右上）
+    { x: 15, y: 35 },   // 3号：西1（左上）
+    { x: 85, y: 55 },   // 4号：东2（右中）
+    { x: 15, y: 55 },   // 5号：西2（左中）
+    { x: 85, y: 75 },   // 6号：东3（右下）
+    { x: 15, y: 75 },   // 7号：西3（左下）
   ];
   
   opponents.forEach((p, i) => {
