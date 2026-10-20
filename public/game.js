@@ -280,7 +280,7 @@ function renderGame(state) {
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
     // 手牌背面：少的时候叠加，多的时候只显示一张牌
     let cardsHtml = '';
-    const maxStack = 5;  // 最多叠加5张
+    const maxStack = 11;  // 最多叠加11张，超过就只显示一张
     if (p.handCount <= maxStack) {
       // 手牌少：叠加显示
       for (let j = 0; j < p.handCount; j++) {
