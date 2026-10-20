@@ -278,21 +278,23 @@ function renderGame(state) {
     const unoLabel = p.unoCalled ? `<div class="uno-called">📢 有岁！</div>` : '';
     const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id)
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
-    // 手牌背面叠放
-    const showCount = Math.min(p.handCount, 14);
+    // 手牌背面：少的时候叠加，多的时候只显示一张牌
     let cardsHtml = '';
-    for (let j = 0; j < showCount; j++) {
-      cardsHtml += `<div class="opp-card-back" style="left:${j * 8}px"></div>`;
-    }
-    let overFlowHtml = '';
-    if (p.handCount > 14) {
-      overFlowHtml = `<div class="opp-card-back overflow">${p.handCount}</div>`;
+    const maxStack = 5;  // 最多叠加5张
+    if (p.handCount <= maxStack) {
+      // 手牌少：叠加显示
+      for (let j = 0; j < p.handCount; j++) {
+        cardsHtml += `<div class="opp-card-back" style="left:${j * 8}px"></div>`;
+      }
+    } else {
+      // 手牌多：只显示一张牌
+      cardsHtml = `<div class="opp-card-back"></div>`;
     }
     // 手牌数量数字（根据开关显示）
     const countLabel = showHandCount ? `<div class="hand-count">${p.handCount}张</div>` : '';
     const onlineDot = p.offline ? '<span class="dot offline"></span>' : '<span class="dot online"></span>';
     const ownerBadge = p.isOwner ? `<span class="owner-badge-small">房主</span>` : '';
-    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}${onlineDot} ${ownerBadge}</div><div class="opp-hand">${cardsHtml}${overFlowHtml}</div>${countLabel}${unoLabel}${penalty}${rankLabel}${reportBtn}`;
+    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${p.name}${onlineDot} ${ownerBadge}</div><div class="opp-hand">${cardsHtml}${countLabel}</div>${unoLabel}${penalty}${rankLabel}${reportBtn}`;
     oppEl.appendChild(div);
   });
 
