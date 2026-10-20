@@ -257,21 +257,29 @@ function renderGame(state) {
     $('top-label').textContent = '?';
   }
 
-  // 对手（上半圆均匀分布：右边开始逆时针到左边）
+  // 对手位置：分散布局，不要都挤在上半圆
   const oppEl = $('opponents');
   oppEl.innerHTML = '';
   const opponents = state.players.filter(p => !p.isYou);
   const n = opponents.length;
+  
+  // 定义位置点：左列、顶列、右列
+  const positions = [
+    { x: 15, y: 25 },   // 左上
+    { x: 15, y: 45 },   // 左中
+    { x: 15, y: 65 },   // 左下
+    { x: 50, y: 18 },   // 顶中
+    { x: 85, y: 25 },   // 右上
+    { x: 85, y: 45 },   // 右中
+    { x: 85, y: 65 },   // 右下
+  ];
+  
   opponents.forEach((p, i) => {
-    // 从右边(0°)到左边(180°)均匀分布，更靠上一些
-    const angle = (180 / (n + 1)) * (i + 1);
-    const rad = angle * Math.PI / 180;
-    const x = 50 + 45 * Math.cos(rad);  // 百分比，更宽
-    const y = 35 - 28 * Math.sin(rad);  // 更靠上
+    const pos = positions[i % positions.length];
     const div = document.createElement('div');
     div.className = 'opponent ' + (p.isCurrent ? ' current' : '');
-    div.style.left = x + '%';
-    div.style.top = y + '%';
+    div.style.left = pos.x + '%';
+    div.style.top = pos.y + '%';
     div.style.transform = 'translate(-50%, -50%)';
     const penalty = (p.isCurrent && state.pendingDraw > 0) ? `<div class="penalty">+${state.pendingDraw}</div>` : '';
     const rankLabel = p.finished ? `<div class="rank">第 ${p.rank} 名</div>` : '';
