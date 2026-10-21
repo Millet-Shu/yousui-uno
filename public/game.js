@@ -54,6 +54,7 @@ $('btn-start').onclick = () => socket.emit('startGame');
 $('btn-uno').onclick = () => socket.emit('callUno');
 $('btn-grab').onclick = () => socket.emit('grabLead');
 $('btn-skip').onclick = () => socket.emit('skipTurn');
+$('btn-grab-card').onclick = () => socket.emit('grabCard');
 $('btn-menu').onclick = () => $('menu-dropdown').classList.toggle('hidden');
 $('toggle-hand-count').onchange = (e) => {
   showHandCount = e.target.checked;
@@ -354,6 +355,10 @@ function renderGame(state) {
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing');
   $('btn-restart').classList.toggle('hidden', !state.isOwner);
   $('btn-endgame').classList.toggle('hidden', !state.isOwner);
+
+  // 抢牌按钮：当前玩家可以抢牌时显示
+  const canGrab = state.grabAvailable && state.grabAvailable.playerId === myPlayerId;
+  $('btn-grab-card').classList.toggle('hidden', !canGrab);
 
   const myTurn2 = state.players.find(p => p.isYou && p.isCurrent);
   if (myTurn2 && state.status === 'playing' && !state.wildPending && state.pendingDraw > 0) {

@@ -114,6 +114,7 @@ function createRoom(maxPlayers = 4) {
     aiTurnPending: false,        // ✅ AI 去重保护
     paused: false,
     pausedBy: null,
+    grabAvailable: null,  // 可以抢牌的状态 { card, playedBy }
     log: []
   });
   return rooms.get(code);
@@ -167,6 +168,7 @@ function publicRoomState(room, selfPlayer) {
     maxPlayers: room.maxPlayers,
     justDrew: !!room.justDrew,
     isOwner: selfPlayer && selfPlayer.socketId === room.ownerSocketId,
+    grabAvailable: room.grabAvailable && room.grabAvailable.playerId === selfId ? room.grabAvailable : null,
     spectators: (room.spectators || []).slice(0, 5).map(s => s ? { name: s.name, isYou: s.id === selfId, isOwner: s.socketId === room.ownerSocketId } : null),
     log: room.log.slice(-20)
   };
@@ -375,10 +377,33 @@ function handleCardEffect(room, player, card, chosenColor) {
 
   if (room.wildPending) { broadcastRoom(room); return; }
 
+  // 检查谁可以抢牌：手上有和刚打出的牌完全一样的牌
+  room.grabAvailable = null;
+  const lastCard = room.topCard;
+  for (const p of room.players) {
+    if (p.id === player.id) continue;  // 排除刚打出的玩家
+    if (p.finished) continue;  // 排除已经打完的
+    const hasSame = p.hand.findIndex(c => 
+      c.color === lastCard.color && c.type === lastCard.type && c.value === lastCard.value
+    );
+    if (hasSame >= 0) {
+      room.grabAvailable = { card: lastCard, playedBy: player.name, cardIndex: hasSame, playerId: p.id };
+      // AI自动抢牌
+      if (p.isAI) {
+        setTimeout(() => {
+          if (room.grabAvailable && room.grabAvailable.playerId === p.id) {
+            grabCard(room, p.id);
+          }
+        }, 800 + Math.random() * 800);
+      }
+      break;  // 先只让第一个可以抢的人抢
+    }
+  }
+
   broadcastRoom(room);
 
   const next = room.players[room.currentIndex];
-  if (next && next.isAI && room.status === 'playing') scheduleAiTurn(room);
+  if (next && next.isAI && room.status === 'playing' && !room.grabAvailable) scheduleAiTurn(room);
 }
 
 // 检查当前玩家是否可以叠加罚牌（手里有 +2/+4 时自动让过，让他们选择出 or 摸）
@@ -463,6 +488,38 @@ function advance(room) {
   room.currentIndex = next;
   // ✅ 切换玩家时清理 justDrew
   room.justDrew = false;
+}
+
+// 抢牌功能
+function grabCard(room, playerId) {
+  if (!room.grabAvailable) return;
+  if (room.grabAvailable.playerId !== playerId) return;
+  
+  const grabberIdx = room.players.findIndex(p => p.id === playerId);
+  const grabber = room.players[grabberIdx];
+  if (!grabber || grabber.finished) return;
+  
+  const cardIndex = room.grabAvailable.cardIndex;
+  const card = grabber.hand[cardIndex];
+  if (!card) return;
+  
+  addLog(room, `⚡ ${grabber.name} 抢牌！`);
+  
+  // 从手上移除那张牌
+  grabber.hand.splice(cardIndex, 1);
+  room.discardPile.push(card);
+  room.topCard = card;
+  
+  // 清空之前的叠加牌，重新计算
+  room.pendingDraw = 0;
+  room.pendingDrawType = null;
+  
+  // 设置当前玩家为抢牌者
+  room.currentIndex = grabberIdx;
+  room.grabAvailable = null;
+  
+  // 重新处理牌效
+  handleCardEffect(room, grabber, card, card.color === 'none' ? 'red' : null);
 }
 
 function checkWin(room) {
@@ -799,6 +856,10 @@ io.on('connection', (socket) => {
 
   socket.on('playCard', ({ cardIndex, chosenColor }) => {
     if (currentRoom) playCard(currentRoom, currentPlayerId, cardIndex, chosenColor);
+  });
+
+  socket.on('grabCard', () => {
+    if (currentRoom) grabCard(currentRoom, currentPlayerId);
   });
 
   socket.on('callUno', () => {

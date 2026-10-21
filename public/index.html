@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>有岁 UNO</title>
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 
@@ -123,6 +123,9 @@
     <!-- 跳过按钮（摸完牌后选择不打出） -->
     <button id="btn-skip" class="btn-skip hidden">跳过回合</button>
 
+    <!-- 抢牌按钮 -->
+    <button id="btn-grab-card" class="btn-grab-card hidden">⚡ 抢牌！</button>
+
     <!-- 我的名次 -->
     <div id="my-rank" class="my-rank hidden"></div>
 
@@ -145,6 +148,6 @@
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="game.js?v=21"></script>
+<script src="game.js?v=22"></script>
 </body>
 </html>
