@@ -4,7 +4,7 @@ const socket = io();
 let myPlayerId = localStorage.getItem('uno_playerId') || null;
 let myRoomCode = localStorage.getItem('uno_roomCode') || null;
 let leftRoom = false;
-let showHandCount = true;
+let showHandCount = false;  // 是否显示手牌数量（默认关闭）
 let currentGameState = null;
 
 // DOM
