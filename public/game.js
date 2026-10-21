@@ -254,14 +254,15 @@ function renderGame(state) {
   const opponents = state.players.filter(p => !p.isYou);
   const n = opponents.length;
 
+  // 对手位置：从我（底部）开始，顺时针方向排列，AI编号依次变大
   const positions = [
-    { x: 85, y: 45 },
-    { x: 50, y: 20 },
-    { x: 15, y: 45 },
-    { x: 15, y: 68 },
-    { x: 85, y: 68 },
-    { x: 15, y: 22 },
-    { x: 85, y: 22 },
+    { x: 85, y: 68 },  // 1号：右下（东南）
+    { x: 85, y: 45 },  // 2号：右中（东）
+    { x: 85, y: 22 },  // 3号：右上（东北）
+    { x: 50, y: 20 },  // 4号：顶中（北）
+    { x: 15, y: 22 },  // 5号：左上（西北）
+    { x: 15, y: 45 },  // 6号：左中（西）
+    { x: 15, y: 68 },  // 7号：左下（西南）
   ];
 
   opponents.forEach((p, i) => {
