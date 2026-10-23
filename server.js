@@ -253,8 +253,9 @@ function startGame(room) {
 
 function grabLead(room, playerId) {
   if (room.status !== 'grabbing') return;
-  room.currentIndex = room.players.findIndex(p => p.id === playerId);
-  if (room.currentIndex < 0) return;
+  const leadIdx = room.players.findIndex(p => p.id === playerId);
+  if (leadIdx < 0) return;   // 观战者乱点不能把 currentIndex 改成 -1
+  room.currentIndex = leadIdx;
 
   let starter = room.drawPile.pop();
   let guard = 0;
@@ -453,6 +454,7 @@ function drawCard(room, playerId) {
   const player = room.players[room.currentIndex];
   if (!player || player.id !== playerId) return;
   if (room.wildPending) return;
+  if (room.justDrew) return;   // 本回合已摸过一张，防止连点摸牌堆无限摸牌
   room.grabAvailable = null;  // 当前玩家已行动，抢牌窗口关闭
 
   // 有罚牌要摸
@@ -780,7 +782,7 @@ io.on('connection', (socket) => {
 
   socket.on('startGame', () => {
     const room = currentRoom;
-    if (!room || !isRoomOwner(room, socket.id, currentPlayerId)) return;
+    if (!room || room.status !== 'waiting' || !isRoomOwner(room, socket.id, currentPlayerId)) return;
     if (room.players.length < 2) { socket.emit('errorMsg', '至少需要2人（可加AI）'); return; }
     startGame(room);
   });
@@ -935,6 +937,11 @@ io.on('connection', (socket) => {
     if (pos >= 5) { socket.emit('errorMsg', '观战席已满'); return; }
     const p = room.players.splice(idx, 1)[0];
     const spId = 'sp_' + Date.now();
+    // 房主进观战席：房主身份要跟着新 id 走，否则回到玩家列表后就没有房主权限了
+    if (isRoomOwner(room, socket.id, currentPlayerId)) {
+      room.ownerPlayerId = spId;
+      room.ownerSocketId = socket.id;
+    }
     room.spectators[pos] = { id: spId, name: p.name, socketId: socket.id };
     addLog(room, `${p.name} 进入观战席`);
     currentPlayerId = spId;

@@ -143,12 +143,14 @@ socket.on('reconnectFailed', () => {
 });
 
 socket.on('errorMsg', (msg) => {
-  $('home-error').textContent = msg;
+  // 首页用内联提示，其它页面直接弹窗，否则错误信息用户看不到
+  if ($('screen-home').classList.contains('active')) $('home-error').textContent = msg;
+  else alert(msg);
 });
 
-// 观战席换位：收到对方请求 → 弹确认
-socket.on('swapRequest', ({ fromName, fromId, toId, toName }) => {
-  const accept = confirm(`${escapeHtml(fromName)} 想和你交换观战席位置，同意吗？`);
+// 观战席换位：收到对方请求 → 弹确认（confirm 是纯文本，不要转义）
+socket.on('swapRequest', ({ fromName, fromId, toId }) => {
+  const accept = confirm(`${fromName} 想和你交换观战席位置，同意吗？`);
   socket.emit('spectatorSwapConfirm', { accept, fromId, toId });
 });
 
@@ -230,11 +232,14 @@ function renderLobby(state) {
   });
 
   if (state.players.length < state.maxPlayers) {
+    const isAlreadySpectator = state.spectators.some(x => x && x.isYou);
     const addBox = document.createElement('div');
     addBox.className = 'add-slot';
     addBox.textContent = '+';
     addBox.title = '点击回到玩家列表';
-    addBox.onclick = () => socket.emit('spectatorJoin');
+    // 只有在观战席的人点这个才有意义，玩家点了会静默无响应
+    if (isAlreadySpectator) addBox.onclick = () => socket.emit('spectatorJoin');
+    else addBox.style.cursor = 'default';
     list.appendChild(addBox);
   }
   const sp = $('lobby-spectators');
@@ -447,6 +452,8 @@ function renderGame(state) {
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing' || isSpectator);
   $('btn-restart').classList.toggle('hidden', !state.isOwner);
   $('btn-endgame').classList.toggle('hidden', !state.isOwner);
+  // 暂停只有房主或当前回合玩家能操作，其他人隐藏避免点了没反应
+  $('btn-pause').classList.toggle('hidden', !(state.isOwner || myTurn));
 
   // 抢牌按钮：我可以抢牌时显示（服务器已按候选人过滤）
   $('btn-grab-card').classList.toggle('hidden', !state.grabAvailable);
