@@ -42,6 +42,7 @@ $('btn-join').onclick = () => {
 };
 
 $('btn-leave').onclick = () => {
+  if (!confirm('确定要离开房间吗？')) return;
   socket.emit('leaveRoom');
   localStorage.clear();
   myPlayerId = null;
@@ -137,6 +138,19 @@ socket.on('errorMsg', (msg) => {
   $('home-error').textContent = msg;
 });
 
+// 观战席换位：收到对方请求 → 弹确认
+socket.on('swapRequest', ({ fromName, fromId, toId, toName }) => {
+  const accept = confirm(`${escapeHtml(fromName)} 想和你交换观战席位置，同意吗？`);
+  socket.emit('spectatorSwapConfirm', { accept, fromId, toId });
+});
+
+socket.on('swapRequestResult', ({ accepted }) => {
+  // 换位完成后 roomUpdate 会自动刷新，这里只提示一下
+  if (currentGameState && currentGameState.status === 'waiting') {
+    // 已在 lobby 页，roomUpdate 会刷新
+  }
+});
+
 socket.on('roomUpdate', (state) => {
   if (leftRoom) return;
   if (state.status === 'waiting') {
@@ -158,10 +172,12 @@ function renderLobby(state) {
   state.players.forEach((p, i) => {
     const div = document.createElement('div');
     div.className = 'player';
-    const delBtn = p.isAI ? `<button class="del-btn" onclick="socket.emit('removeAI',{index:${i}})">×</button>` : '';
+    const delBtn = p.isAI ? `<button class="del-btn" onclick="socket.emit('removeAI',{index:${i}})" title="移除AI">×</button>` : '';
+    // 房主可以踢非房主非AI的玩家
+    const kickBtn = state.isOwner && !p.isOwner && !p.isAI ? `<button class="kick-btn" onclick="if(confirm('确定踢出 ${escapeHtml(p.name)} 吗？')) socket.emit('kickPlayer',{playerId:'${p.id}'})" title="踢出">踢出</button>` : '';
     const ownerBadge = p.isOwner ? `<span class="owner-badge">房主</span>` : '';
     // ✅ escapeHtml 防 XSS
-    div.innerHTML = `<span>${escapeHtml(p.name)}${p.isYou ? ' (你)' : ''} ${ownerBadge}</span><span class="badge">${p.isAI ? 'AI' : '玩家'}</span>${delBtn}`;
+    div.innerHTML = `<span>${escapeHtml(p.name)}${p.isYou ? ' (你)' : ''} ${ownerBadge}</span><span>${delBtn}${kickBtn}</span><span class="badge">${p.isAI ? 'AI' : '玩家'}</span>`;
     list.appendChild(div);
   });
   if (state.players.length < state.maxPlayers) {
@@ -189,7 +205,8 @@ function renderLobby(state) {
         div.textContent = escapeHtml(s.name)[0];  // ✅ 防 XSS
         div.title = escapeHtml(s.name);
         if (!s.isYou) {
-          div.onclick = () => socket.emit('moveSpectator', { index: i });
+          div.onclick = () => socket.emit('spectatorSwapRequest', { targetId: s.id });
+          div.title = `点击和 ${escapeHtml(s.name)} 换位`;
         }
         container.appendChild(div);
         if (s.isOwner) {
