@@ -568,14 +568,14 @@ function renderGame(state) {
 
   // 放得下就整体居中；放不下改为左对齐并允许横向拖动（不再压缩重叠）
   requestAnimationFrame(() => {
-    if (!handEl.firstElementChild || !handEl.lastElementChild) return;
-    handEl.classList.remove('scrollable');
-    const box = handEl.getBoundingClientRect();
-    const first = handEl.firstElementChild.getBoundingClientRect();
-    const last = handEl.lastElementChild.getBoundingClientRect();
-    if (last.right > box.right + 1 || first.left < box.left - 1) {
-      handEl.classList.add('scrollable');
-    }
+    const cards = handEl.querySelectorAll('.hand-card');
+    if (!cards.length) return;
+    const cs = getComputedStyle(handEl);
+    const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const gap = parseFloat(cs.gap) || 0;
+    const cardW = cards[0].getBoundingClientRect().width;
+    const need = cards.length * cardW + (cards.length - 1) * gap + pad;
+    handEl.classList.toggle('scrollable', need > handEl.clientWidth + 1);
     handEl.scrollLeft = prevScroll;
   });
 }
