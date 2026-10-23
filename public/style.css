@@ -312,11 +312,13 @@ input:focus { border-color: #6c7bff; }
   left: 50%;
   transform: translateX(-50%);
   display: flex;
+  justify-content: center;   /* 手牌整体居中，不再堆在左边 */
+  align-items: flex-end;
   gap: 6px;
   flex-wrap: nowrap;
   max-width: 96vw;
-  overflow-x: auto;
   padding: 20px 10px 6px;
+  overflow: visible;
   scrollbar-width: none; /* Firefox */
 }
 #hand-area::-webkit-scrollbar {

@@ -293,11 +293,17 @@ function renderLobby(state) {
 // ===== 渲染游戏页 =====
 const T_LABEL = { 0: '', 1: '⊘', 2: '⇄', 3: '+2', 4: '万能', 5: '+4' };
 
-// 座位坐标（百分比）：≤4 人用东南西北大方位，>4 人用紧凑环绕
-const SEAT_RING_4 = [
+// 座位坐标（百分比）：按对手数量选环，避开底部手牌区
+const SEAT_RING_1 = [{ x: 50, y: 20 }];
+const SEAT_RING_2 = [{ x: 85, y: 40 }, { x: 15, y: 40 }];
+const SEAT_RING_3 = [
   { x: 85, y: 50 },  // 东（我的右侧）
   { x: 50, y: 20 },  // 北（对面）
   { x: 15, y: 50 },  // 西（我的左侧）
+];
+// 4 个对手（自己观战时）：上排两张 + 左右各一张，不压中间牌堆
+const SEAT_RING_4 = [
+  { x: 85, y: 42 }, { x: 72, y: 15 }, { x: 28, y: 15 }, { x: 15, y: 42 },
 ];
 const SEAT_RING_8 = [
   { x: 85, y: 68 }, { x: 85, y: 45 }, { x: 85, y: 22 },
@@ -341,10 +347,15 @@ function renderGame(state) {
   const meIdx = Math.max(players.findIndex(p => p.isYou), 0);
 
   // 座位：以"我"为南位（底部），从我的下家开始沿出牌顺序逆时针排列
-  // 观战者没有自己的座位，补一个南位显示全部玩家
-  const seatPositions = isSpectator
-    ? [...(total <= 4 ? SEAT_RING_4 : SEAT_RING_8), { x: 50, y: 58 }]
-    : (total <= 4 ? SEAT_RING_4 : SEAT_RING_8);
+  // 观战者没有自己的座位，按玩家总数选环（不再额外补南位，避免压住中间牌堆）
+  const oppCount = isSpectator ? total : total - 1;
+  let seatPositions;
+  if (isSpectator && total >= 8) seatPositions = [...SEAT_RING_8, { x: 50, y: 88 }];
+  else if (oppCount >= 5) seatPositions = SEAT_RING_8;
+  else if (oppCount === 4) seatPositions = SEAT_RING_4;
+  else if (oppCount === 3) seatPositions = SEAT_RING_3;
+  else if (oppCount === 2) seatPositions = SEAT_RING_2;
+  else seatPositions = SEAT_RING_1;
 
   // 按出牌顺序（direction=1 时沿数组递增，视觉逆时针）从我的下家开始排座
   // 观战者没有"我"，从第一个玩家开始把所有人排满
@@ -553,6 +564,24 @@ function renderGame(state) {
     }
     handEl.appendChild(div);
   });
+
+  // 手牌过多时按可用宽度自动重叠收窄：整手牌都看得见，并且保持居中
+  requestAnimationFrame(() => {
+    const cards = handEl.querySelectorAll('.hand-card');
+    const n = cards.length;
+    if (n < 2) return;
+    cards.forEach(c => { c.style.marginLeft = ''; });
+    const cardW = cards[0].getBoundingClientRect().width;
+    const avail = handEl.getBoundingClientRect().width - 20;  // 扣掉左右 padding
+    const natural = n * cardW;
+    if (natural <= avail) return;
+    const gap = 6;
+    const overlap = Math.min(cardW * 0.68, (natural + (n - 1) * gap - avail) / (n - 1));
+    if (overlap <= 0) return;
+    cards.forEach((c, i) => {
+      if (i > 0) c.style.marginLeft = -(overlap + gap) + 'px';
+    });
+  });
 }
 
 // 颜色选择
@@ -573,6 +602,15 @@ document.querySelectorAll('.color-btn').forEach(btn => {
 document.querySelector('#draw-pile').onclick = () => {
   socket.emit('drawCard');
 };
+
+// 横竖屏切换后重新计算手牌重叠与座位，避免牌被裁掉
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (currentGameState) renderGame(currentGameState);
+  }, 150);
+});
 
 // 不出按钮
 $('btn-pass').onclick = () => {
