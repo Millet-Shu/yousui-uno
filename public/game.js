@@ -380,14 +380,13 @@ function renderGame(state) {
     const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id && !p.isYou)
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
     let cardsHtml = '';
+    // 最多显示 11 张牌背，叠放间距由 CSS 控制（居中、不撑出面板）
     const maxStack = 11;
-    if (p.handCount <= maxStack) {
-      for (let j = 0; j < p.handCount; j++) {
-        cardsHtml += `<div class="opp-card-back" style="left:${j * 8}px"></div>`;
-      }
-    } else {
-      cardsHtml = `<div class="opp-card-back"></div>`;
+    const shown = Math.min(p.handCount, maxStack);
+    for (let j = 0; j < shown; j++) {
+      cardsHtml += '<div class="opp-card-back"></div>';
     }
+    if (p.handCount > maxStack) cardsHtml += '<div class="opp-card-back overflow">+' + (p.handCount - maxStack) + '</div>';
     const countLabel = showHandCount ? `<div class="hand-count">${p.handCount}张</div>` : '';
     const onlineDot = p.offline ? '<span class="dot offline"></span>' : '<span class="dot online"></span>';
     const proxyBadge = p.aiProxy ? '<span class="proxy-badge">AI代理</span>' : '';

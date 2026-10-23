@@ -221,8 +221,10 @@ input:focus { border-color: #6c7bff; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 6px; vertical-align: middle; }
 .dot.online { background: #30d060; }
 .dot.offline { background: #888; }
-.opp-hand { position: relative; height: 60px; margin: 6px 0; }
-.opp-card-back { position: absolute; top: 0; width: 40px; height: 60px; background: repeating-linear-gradient(45deg, #c03030, #c03030 6px, #a02020 6px, #a02020 12px); border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+.opp-hand { position: relative; height: 60px; margin: 6px 0; display: flex; justify-content: center; align-items: flex-start; }
+.opp-card-back { flex: 0 0 auto; width: 40px; height: 60px; background: repeating-linear-gradient(45deg, #c03030, #c03030 6px, #a02020 6px, #a02020 12px); border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+/* 多张牌背居中对齐叠放：每张只露 6px，总宽度不会撑到中间牌堆 */
+.opp-card-back + .opp-card-back { margin-left: -34px; }
 .opp-card-back.overflow { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; font-weight: bold; background: #333; }
 .opponent.current { outline: 3px solid #30d060; background: rgba(48, 208, 96, 0.25); box-shadow: 0 0 15px rgba(48, 208, 96, 0.6); }
 .opponent .name { font-size: 14px; }
@@ -308,16 +310,15 @@ input:focus { border-color: #6c7bff; }
 
 #hand-area {
   position: absolute;
-  bottom: 14px;
+  bottom: 26px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   justify-content: center;   /* 手牌整体居中，不再堆在左边 */
-  align-items: flex-end;
   gap: 6px;
   flex-wrap: nowrap;
   max-width: 96vw;
-  padding: 20px 10px 6px;
+  padding: 16px 10px 8px;
   overflow: visible;
   scrollbar-width: none; /* Firefox */
 }
@@ -388,6 +389,8 @@ input:focus { border-color: #6c7bff; }
   .hand-card { width: 45px; height: 68px; font-size: 13px; }
   #game-log { display: none; }
   .opp-card-back { width: 25px; height: 38px; }
+  .opp-card-back + .opp-card-back { margin-left: -19px; }
+  .opp-hand { height: 38px; }
   .btn-grab { font-size: 16px; padding: 10px 20px; }
   .spectator-tip { font-size: 12px; padding: 10px 0; }
   /* 手机端：对手面板收窄，避免左右两侧顶到屏幕边缘 */
