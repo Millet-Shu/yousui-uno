@@ -254,16 +254,19 @@ function renderGame(state) {
   oppEl.innerHTML = '';
   const players = state.players;
   const total = players.length;
+  const isSpectator = !players.some(p => p.isYou);
   const meIdx = Math.max(players.findIndex(p => p.isYou), 0);
 
   // 座位：以"我"为南位（底部），从我的下家开始沿出牌顺序逆时针排列
   // ≤4人：标准东南西北大方位（东=我右侧 → 北=对面 → 西=我左侧）
   // >4人：紧凑环绕布局
-  const seatPositions = total <= 4 ? [
-    { x: 85, y: 50 },  // 东（我的右侧，逆时针下一位）
-    { x: 50, y: 20 },  // 北（对面）
-    { x: 15, y: 50 },  // 西（我的左侧）
-  ] : [
+  // 观战者没有自己的座位，所有人的牌都按完整方位环绕显示
+  const ring4 = [
+    { x: 85, y: 50 },  // 东
+    { x: 50, y: 20 },  // 北
+    { x: 15, y: 50 },  // 西
+  ];
+  const ring8 = [
     { x: 85, y: 68 },  // 东南
     { x: 85, y: 45 },  // 东
     { x: 85, y: 22 },  // 东北
@@ -272,11 +275,17 @@ function renderGame(state) {
     { x: 15, y: 45 },  // 西
     { x: 15, y: 68 },  // 西南
   ];
+  const seatPositions = isSpectator
+    ? (total <= 4 ? [...ring4, { x: 50, y: 76 }] : [...ring8, { x: 50, y: 76 }])  // 补一个南位
+    : (total <= 4 ? ring4 : ring8);
 
   // 按出牌顺序（direction=1 时沿数组递增，视觉逆时针）从我的下家开始排座
+  // 观战者没有"我"，从第一个玩家开始把所有人排满
   const ordered = [];
-  for (let k = 1; k <= total && ordered.length < total - 1; k++) {
-    const p = players[(meIdx + k) % total];
+  const startOffset = isSpectator ? 0 : 1;
+  const seatCount = isSpectator ? total : total - 1;
+  for (let k = 0; k < seatCount; k++) {
+    const p = players[(meIdx + startOffset + k) % total];
     if (p && !p.isYou) ordered.push(p);
   }
 
@@ -303,9 +312,10 @@ function renderGame(state) {
     }
     const countLabel = showHandCount ? `<div class="hand-count">${p.handCount}张</div>` : '';
     const onlineDot = p.offline ? '<span class="dot offline"></span>' : '<span class="dot online"></span>';
-    const ownerBadge = p.isOwner ? `<span class="owner-badge-small">房主</span>` : '';
+    const proxyBadge = p.aiProxy ? '<span class="proxy-badge">AI代理</span>' : '';
+    const ownerBadge = p.isOwner ? '<span class="owner-badge-small">房主</span>' : '';
     // ✅ 名字 escapeHtml
-    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${escapeHtml(p.name)}${onlineDot} ${ownerBadge}</div><div class="opp-hand">${cardsHtml}</div>${countLabel}${unoLabel}${penalty}${rankLabel}${reportBtn}`;
+    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${escapeHtml(p.name)}${onlineDot} ${ownerBadge}${proxyBadge}</div><div class="opp-hand">${cardsHtml}</div>${countLabel}${unoLabel}${penalty}${rankLabel}${reportBtn}`;
     oppEl.appendChild(div);
   });
 
@@ -325,7 +335,7 @@ function renderGame(state) {
   } else if (state.pendingDraw > 0) {
     $('status-text').textContent = `${escapeHtml(state.currentPlayerName)} 面临 +${state.pendingDraw} 罚牌...`;
   } else if (state.grabAvailable) {
-    $('status-text').textContent = `⚡ ${escapeHtml(state.grabAvailable.playedBy)} 刚打出 ${cardText(state.grabAvailable.card)}，你可以抢出相同的牌！`;
+    $('status-text').textContent = `⚡ ${escapeHtml(state.grabAvailable.playedBy)} 刚打出 ${cardText(state.grabAvailable.card)}，你可以抢相同的牌！`;
   } else {
     $('status-text').textContent = `等待 ${escapeHtml(state.currentPlayerName)} 出牌...`;
   }
@@ -414,6 +424,12 @@ function renderGame(state) {
   // ✅ 手牌：排序时带上 originalIndex，避免 indexOf 错位
   const handEl = $('hand-area');
   handEl.innerHTML = '';
+
+  // 观战者看不到手牌内容，只显示所有人的牌背
+  if (isSpectator) {
+    handEl.innerHTML = '<div class="spectator-tip">观战中 · 已显示所有玩家的牌背</div>';
+    return;
+  }
 
   const colorOrder = { red: 0, yellow: 1, green: 2, blue: 3, none: 4 };
   // 关键修复：给每张牌附上原始索引

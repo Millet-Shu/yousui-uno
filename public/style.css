@@ -131,6 +131,8 @@ input:focus { border-color: #6c7bff; }
 .uno-called { font-size: 12px; color: #ffd700; margin: 2px 0; }
 .owner-badge { display: inline-block; background: #ffd700; color: #000; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 4px; font-weight: bold; }
 .owner-badge-small { display: inline-block; background: #ffd700; color: #000; font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 4px; font-weight: bold; }
+.proxy-badge { display: inline-block; background: #4a90d9; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 4px; font-weight: bold; }
+.spectator-tip { color: #9fc4e8; font-size: 14px; text-align: center; padding: 20px 0; }
 .spectator-container { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 #game-room-code { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: bold; color: #ffd700; background: rgba(0,0,0,0.3); padding: 6px 16px; border-radius: 8px; z-index: 10; }
 .hand-card.selected { transform: translateY(-10px); box-shadow: 0 0 15px rgba(255,255,255,0.5); }
@@ -326,4 +328,20 @@ input:focus { border-color: #6c7bff; }
   .btn-pass { bottom: 220px; }
   .btn-skip { bottom: 220px; }
   #status-bar { bottom: 200px; }
+  .opponent .name { font-size: 12px; }
+  .spectator-tip { font-size: 12px; padding: 10px 0; }
+}
+
+/* 窄屏/手机：观战席移到左上角横排，避免被西侧对手的卡牌挡住 */
+@media (max-width: 900px) {
+  #game-spectators {
+    left: 6px; top: 6px; transform: none;
+    flex-direction: row; align-items: center; gap: 4px;
+    background: rgba(0,0,0,0.4); padding: 3px 8px; border-radius: 10px;
+    z-index: 6; max-width: calc(100vw - 160px);
+  }
+  #game-spectators .section-title { font-size: 10px; margin: 0; white-space: nowrap; }
+  #game-spectator-list { flex-direction: row; gap: 4px; overflow-x: auto; }
+  .game-spectator-avatar { width: 20px; height: 20px; font-size: 10px; }
+  #game-spectators .owner-badge-small { display: none; }
 }

@@ -122,7 +122,7 @@ function createRoom(maxPlayers = 4) {
 
 function broadcastRoom(room) {
   for (const p of room.players) {
-    if (p.isAI) continue;
+    if (p.isAI || !p.socketId) continue;
     const socket = io.sockets.sockets.get(p.socketId);
     if (socket) socket.emit('roomUpdate', publicRoomState(room, p));
   }
@@ -142,6 +142,7 @@ function publicRoomState(room, selfPlayer) {
       id: p.id,
       name: p.name,
       isAI: p.isAI,
+      aiProxy: !!p.aiProxy,
       offline: !!p.offline,
       handCount: p.hand.length,
       finished: !!p.finished,
@@ -211,7 +212,10 @@ function startGame(room) {
   room.discardPile = [];
   room.topCard = null;
 
-  for (const p of room.players) { p.hand = []; p.finished = false; p.rank = null; p.unoCalled = false; }
+  for (const p of room.players) {
+    p.hand = []; p.finished = false; p.rank = null; p.unoCalled = false;
+    p.aiProxy = !!p.offline;  // 开局就离线的玩家由 AI 代理
+  }
 
   for (let i = 0; i < 7; i++) {
     for (const p of room.players) {
@@ -236,7 +240,7 @@ function startGame(room) {
 
   setTimeout(() => {
     if (room.status !== 'grabbing') return;
-    const ai = room.players.find(p => p.isAI);
+    const ai = room.players.find(p => isAutoPlayer(p));
     if (ai) grabLead(room, ai.id);
   }, 2000);
 }
@@ -288,7 +292,7 @@ function grabLead(room, playerId) {
   broadcastRoom(room);
 
   const next = room.players[room.currentIndex];
-  if (next && next.isAI) scheduleAiTurn(room);
+  if (next && isAutoPlayer(next)) scheduleIfAuto(room);
 }
 
 function playCard(room, playerId, cardIndex, chosenColor = null) {
@@ -399,7 +403,7 @@ function handleCardEffect(room, player, card, chosenColor) {
     // AI 自动抢牌
     for (const cand of candidates) {
       const p = room.players.find(x => x.id === cand.playerId);
-      if (p && p.isAI) {
+      if (p && isAutoPlayer(p)) {
         setTimeout(() => {
           if (room.grabAvailable && room.grabAvailable.candidates.some(c => c.playerId === p.id)) {
             grabCard(room, p.id);
@@ -412,16 +416,14 @@ function handleCardEffect(room, player, card, chosenColor) {
       if (room.grabAvailable && room.grabAvailable.candidates === candidates) {
         room.grabAvailable = null;
         broadcastRoom(room);
-        const cur = room.players[room.currentIndex];
-        if (cur && cur.isAI && room.status === 'playing' && !room.paused) scheduleAiTurn(room);
+        scheduleIfAuto(room);
       }
     }, 3000);
   }
 
   broadcastRoom(room);
 
-  const next = room.players[room.currentIndex];
-  if (next && next.isAI && room.status === 'playing' && !room.grabAvailable) scheduleAiTurn(room);
+  if (!room.grabAvailable) scheduleIfAuto(room);
 }
 
 // 检查当前玩家是否可以叠加罚牌（手里有 +2/+4 时自动让过，让他们选择出 or 摸）
@@ -452,9 +454,7 @@ function resolveWildColor(room, playerId, color) {
   if (room.status === 'over') { broadcastRoom(room); return; }
 
   broadcastRoom(room);
-
-  const next = room.players[room.currentIndex];
-  if (next && next.isAI && room.status === 'playing') scheduleAiTurn(room);
+  scheduleIfAuto(room);
 }
 
 function drawCard(room, playerId) {
@@ -474,8 +474,7 @@ function drawCard(room, playerId) {
     room.justDrew = false;
     advance(room);
     broadcastRoom(room);
-    const next = room.players[room.currentIndex];
-    if (next && next.isAI && room.status === 'playing') scheduleAiTurn(room);
+    scheduleIfAuto(room);
     return;
   }
 
@@ -493,8 +492,20 @@ function drawCard(room, playerId) {
   }
   broadcastRoom(room);
 
-  const next = room.players[room.currentIndex];
-  if (next && next.isAI && room.status === 'playing') scheduleAiTurn(room);
+  scheduleIfAuto(room);
+}
+
+// 是否由 AI 代为行动：真正的 AI，或离线被 AI 代理的玩家
+function isAutoPlayer(p) {
+  return !!(p && (p.isAI || p.aiProxy));
+}
+
+// 轮到某人时，若该玩家由 AI 行动则调度 AI 回合
+function scheduleIfAuto(room, delay = 1000) {
+  const cur = room.players[room.currentIndex];
+  if (room.status === 'playing' && !room.paused && isAutoPlayer(cur)) {
+    scheduleAiTurn(room, delay);
+  }
 }
 
 function advance(room) {
@@ -526,7 +537,7 @@ function grabCard(room, playerId) {
   const lastCard = room.grabAvailable.card;
   if (!card || card.color !== lastCard.color || card.type !== lastCard.type || card.value !== lastCard.value) return;
 
-  addLog(room, `⚡ ${grabber.name} 抢出了 ${cardName(card)}！`);
+  addLog(room, `⚡ ${grabber.name} 抢出相同的牌 ${cardName(card)}！`);
 
   // UNO 喊牌逻辑与 playCard 保持一致
   const myUnoCalled = !!room.unoCalled[grabber.id];
@@ -590,7 +601,7 @@ function scheduleAiTurn(room, delay = 1000) {
   room.aiTurnPending = true;
   setTimeout(() => {
     room.aiTurnPending = false;
-    if (room.status === 'playing' && !room.paused && room.players[room.currentIndex]?.isAI) {
+    if (room.status === 'playing' && !room.paused && isAutoPlayer(room.players[room.currentIndex])) {
       aiTurn(room);
     }
   }, delay);
@@ -601,7 +612,7 @@ function scheduleAiTurn(room, delay = 1000) {
 function aiTurn(room) {
   if (room.status !== 'playing' || room.paused) return;
   const player = room.players[room.currentIndex];
-  if (!player || !player.isAI) return;
+  if (!player || !isAutoPlayer(player)) return;
 
   // AI 举报：有玩家剩1张没喊有岁
   if (room.pendingReport) {
@@ -862,8 +873,7 @@ io.on('connection', (socket) => {
     room.aiTurnPending = false;  // ✅ 解锁 AI 调度
     addLog(room, '游戏继续');
     broadcastRoom(room);
-    const next = room.players[room.currentIndex];
-    if (next && next.isAI) scheduleAiTurn(room);
+    scheduleIfAuto(room);
   });
 
   socket.on('leaveRoom', () => {
@@ -942,8 +952,7 @@ io.on('connection', (socket) => {
     room.justDrew = false;
     advance(room);
     broadcastRoom(room);
-    const next = room.players[room.currentIndex];
-    if (next && next.isAI && room.status === 'playing') scheduleAiTurn(room);
+    scheduleIfAuto(room);
   });
 
   socket.on('disconnect', () => {
@@ -954,7 +963,9 @@ io.on('connection', (socket) => {
     if (p) {
       p.socketId = null;
       p.offline = true;
-      addLog(room, `${p.name} 掉线，等待重连`);
+      // 离线后由 AI 代理出牌，游戏不会卡住（抢开局阶段也算）
+      p.aiProxy = room.status === 'playing' || room.status === 'grabbing';
+      addLog(room, p.aiProxy ? `${p.name} 掉线，由 AI 代理` : `${p.name} 掉线，等待重连`);
 
       // ✅ 房主掉线 → 转移房主
       if (isOwner) {
@@ -979,6 +990,8 @@ io.on('connection', (socket) => {
       }
 
       broadcastRoom(room);
+      // 若正好轮到掉线玩家，立即交给 AI 代理行动
+      scheduleIfAuto(room, 800);
     }
   });
 
@@ -989,6 +1002,7 @@ io.on('connection', (socket) => {
       if (p) {
         p.socketId = socket.id;
         p.offline = false;
+        p.aiProxy = false;  // 玩家回来后立即取消 AI 代理
         currentRoom = room;
         currentPlayerId = playerId;
         addLog(room, `${p.name} 重连回来`);
