@@ -194,6 +194,17 @@ function nextIndex(room, offset = 1, fromIdx = null) {
   return (base + room.direction * offset + n * 100) % n;
 }
 
+// 有人离开/被踢后校正轮次指针：保证指向未出完牌的玩家，避免卡在空位
+function normalizeCurrentIndex(room) {
+  const n = room.players.length;
+  if (n === 0) { room.currentIndex = 0; return; }
+  room.currentIndex = ((room.currentIndex % n) + n) % n;
+  for (let i = 0; i < n; i++) {
+    const idx = (room.currentIndex + room.direction * i + n * 100) % n;
+    if (!room.players[idx].finished) { room.currentIndex = idx; return; }
+  }
+}
+
 function drawCards(room, n) {
   const out = [];
   for (let i = 0; i < n; i++) {
@@ -440,8 +451,7 @@ function resolveWildColor(room, playerId, color) {
   if (!['red', 'yellow', 'green', 'blue'].includes(color)) return;  // 非法颜色直接丢弃
   room.currentColor = color;
   room.wildPending = false;
-  // 选色完成，之前举报窗口不再适用（下一玩家即将行动）
-  room.pendingReport = null;
+  // 注意：不要清 pendingReport，否则剩 1 张时打万能牌会白白跳过举报窗口
   addLog(room, `${player.name} 指定颜色 ${colorName(color)}`);
   advance(room);
 
@@ -895,8 +905,7 @@ io.on('connection', (socket) => {
       // 修正轮次指针：被踢者在当前位之前则整体前移
       if (room.status === 'playing') {
         if (pIdx < room.currentIndex) room.currentIndex -= 1;
-        const n = room.players.length;
-        room.currentIndex = ((room.currentIndex % n) + n) % n;
+        normalizeCurrentIndex(room);
         if (wasCurrent) {
           // 轮到的人被踢，下一个人顶上来
           room.justDrew = false;
@@ -950,7 +959,8 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'waiting') return;
     const fromIdx = room.spectators.findIndex(s => s && s.socketId === socket.id);
     if (fromIdx < 0) return;
-    const toIdx = Math.max(0, Math.min(index, 4));
+    if (!Number.isInteger(index) || index < 0 || index > 4) return;  // 非法索引会造出空槽位
+    const toIdx = index;
     const temp = room.spectators[fromIdx];
     room.spectators[fromIdx] = room.spectators[toIdx];
     room.spectators[toIdx] = temp;
@@ -964,7 +974,7 @@ io.on('connection', (socket) => {
     if (idx < 0) return;
     while (room.spectators.length < 5) room.spectators.push(null);
     // 先找到空位再移除玩家，避免观战席已满时玩家凭空消失
-    let pos = Math.min(Math.max(index ?? 4, 0), 4);
+    let pos = Number.isInteger(index) && index >= 0 && index <= 4 ? index : 4;
     while (pos < 5 && room.spectators[pos]) pos++;
     if (pos >= 5) { socket.emit('errorMsg', '观战席已满'); return; }
     const p = room.players.splice(idx, 1)[0];
@@ -1078,8 +1088,7 @@ io.on('connection', (socket) => {
       if (room.players.length > 0) {
         // 修正轮次指针，避免退出后 currentIndex 越界/跳人
         if (idx < room.currentIndex) room.currentIndex -= 1;
-        const n = room.players.length;
-        room.currentIndex = ((room.currentIndex % n) + n) % n;
+        normalizeCurrentIndex(room);
         if (wasCurrent) {
           room.justDrew = false;
           room.aiTurnPending = false;
@@ -1118,7 +1127,7 @@ io.on('connection', (socket) => {
 
   socket.on('callUno', () => {
     const room = currentRoom;
-    if (!room || room.status !== 'playing' || !currentPlayerId) return;
+    if (!room || room.status !== 'playing' || room.paused || !currentPlayerId) return;
     const me = room.players.find(p => p.id === currentPlayerId);
     // 只有手牌 ≤2 张时喊"有岁"才有意义，防止乱点刷状态
     if (!me || me.hand.length > 2) return;
@@ -1131,7 +1140,9 @@ io.on('connection', (socket) => {
 
   socket.on('reportUno', () => {
     const room = currentRoom;
-    if (!room || !room.pendingReport || room.status !== 'playing') return;
+    if (!room || !room.pendingReport || room.status !== 'playing' || room.paused) return;
+    // 只有坐在座位上的人才能举报，观战者不行
+    if (!room.players.some(p => p.id === currentPlayerId)) return;
     // 不能举报自己
     if (room.pendingReport.playerId === currentPlayerId) return;
     const target = room.players.find(p => p.id === room.pendingReport.playerId);
@@ -1154,7 +1165,7 @@ io.on('connection', (socket) => {
 
   socket.on('skipTurn', () => {
     const room = currentRoom;
-    if (!room || room.status !== 'playing' || !room.justDrew) return;
+    if (!room || room.status !== 'playing' || room.paused || !room.justDrew) return;
     const player = room.players[room.currentIndex];
     if (!player || player.id !== currentPlayerId) return;
     room.grabAvailable = null;  // 当前玩家已行动，抢牌窗口关闭
@@ -1250,6 +1261,11 @@ io.on('connection', (socket) => {
     for (const room of rooms.values()) {
       const p = room.players.find(p => p.id === playerId);
       if (p) {
+        // 座位已被另一条活跃连接占用时拒绝认领，避免两个页面同时控制一个人
+        if (p.socketId && p.socketId !== socket.id && io.sockets.sockets.get(p.socketId)) {
+          socket.emit('reconnectFailed');
+          return;
+        }
         p.socketId = socket.id;
         p.offline = false;
         p.aiProxy = false;  // 玩家回来后立即取消 AI 代理
@@ -1268,6 +1284,10 @@ io.on('connection', (socket) => {
       // 观战者刷新页面也要认领回自己的观战位，否则会变成新观众
       const sp = (room.spectators || []).find(s => s && s.id === playerId);
       if (sp) {
+        if (sp.socketId && sp.socketId !== socket.id && io.sockets.sockets.get(sp.socketId)) {
+          socket.emit('reconnectFailed');
+          return;
+        }
         sp.socketId = socket.id;
         if (room.ownerPlayerId === sp.id) room.ownerSocketId = socket.id;
         currentRoom = room;
