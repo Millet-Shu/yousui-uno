@@ -135,7 +135,7 @@ input:focus { border-color: #6c7bff; }
 #action-bar {
   position: absolute;
   left: 50%;
-  bottom: calc(22px + var(--card-h) + 26px);
+  bottom: calc(var(--card-h) + 68px);
   transform: translateX(-50%);
   display: flex;
   flex-wrap: wrap;
@@ -174,7 +174,7 @@ input:focus { border-color: #6c7bff; }
   50% { box-shadow: 0 4px 22px rgba(255,180,60,.85); }
 }
 
-.my-rank { position: absolute; bottom: calc(22px + var(--card-h) + 132px); left: 50%; transform: translateX(-50%); text-align: center; font-size: 22px; font-weight: bold; color: #ffd700; background: rgba(0,0,0,0.65); padding: 12px 28px; border-radius: 14px; z-index: 14; }
+.my-rank { position: absolute; bottom: calc(var(--card-h) + 158px); left: 50%; transform: translateX(-50%); text-align: center; font-size: 22px; font-weight: bold; color: #ffd700; background: rgba(0,0,0,0.65); padding: 12px 28px; border-radius: 14px; z-index: 14; }
 .uno-called { font-size: 12px; color: #ffd700; margin: 2px 0; }
 .owner-badge { display: inline-block; background: #ffd700; color: #000; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 4px; font-weight: bold; }
 .owner-badge-small { display: inline-block; background: #ffd700; color: #000; font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 4px; font-weight: bold; }
@@ -187,8 +187,8 @@ input:focus { border-color: #6c7bff; }
 }
 .lobby-players .player { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 6px; }
 #game-room-code { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: bold; color: #ffd700; background: rgba(0,0,0,0.3); padding: 6px 16px; border-radius: 8px; z-index: 10; }
-.hand-card.selected { transform: translateY(-10px); box-shadow: 0 0 15px rgba(255,255,255,0.5); }
-.hand-card.grabbable { cursor: pointer; box-shadow: 0 0 10px 3px #ffd700; animation: grabPulse 0.8s infinite; transform: translateY(-6px); }
+.hand-card.selected { transform: translateY(-10px); box-shadow: 0 0 15px rgba(255,255,255,0.5); z-index: 2; }
+.hand-card.grabbable { cursor: pointer; box-shadow: 0 0 10px 3px #ffd700; animation: grabPulse 0.8s infinite; transform: translateY(-6px); z-index: 2; }
 @keyframes grabPulse { 50% { box-shadow: 0 0 18px 6px #ffd700; } }
 #game-spectators { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 8px; }
 #game-spectator-list { display: flex; flex-direction: column; gap: 8px; }
@@ -276,7 +276,7 @@ input:focus { border-color: #6c7bff; }
 /* 状态条居中：用 left/right + margin auto 居中，避免 transform 影响内部 fixed 菜单按钮 */
 #status-bar {
   position: absolute;
-  bottom: calc(22px + var(--card-h) + 96px);
+  bottom: calc(var(--card-h) + 118px);
   left: 0;
   right: 0;
   margin: 0 auto;
@@ -295,7 +295,7 @@ input:focus { border-color: #6c7bff; }
 
 #game-log {
   position: absolute;
-  bottom: calc(22px + var(--card-h) + 26px);
+  bottom: calc(var(--card-h) + 66px);
   left: 12px;
   width: 190px;
   max-height: 100px;
@@ -310,18 +310,22 @@ input:focus { border-color: #6c7bff; }
 
 #hand-area {
   position: absolute;
-  bottom: 26px;
+  bottom: 34px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  justify-content: center;   /* 手牌整体居中，不再堆在左边 */
+  justify-content: center;   /* 牌放得下时整体居中 */
   gap: 6px;
   flex-wrap: nowrap;
   max-width: 96vw;
-  padding: 16px 10px 8px;
-  overflow: visible;
+  padding: 18px 10px 6px;
+  overflow-x: auto;          /* 牌太多时可横向拖动查看，不再挤压重叠 */
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none; /* Firefox */
 }
+/* 内容超出容器时改为左对齐，否则居中会把最左边的牌挤到滚动不到的位置 */
+#hand-area.scrollable { justify-content: flex-start; }
 #hand-area::-webkit-scrollbar {
   display: none; /* Chrome/Safari */
 }
@@ -394,16 +398,31 @@ input:focus { border-color: #6c7bff; }
   .btn-grab { font-size: 16px; padding: 10px 20px; }
   .spectator-tip { font-size: 12px; padding: 10px 0; }
   /* 手机端：对手面板收窄，避免左右两侧顶到屏幕边缘 */
-  .opponent { padding: 4px 7px; min-width: 0; max-width: 108px; }
+  .opponent { padding: 4px 7px; min-width: 0; max-width: min(108px, 30vw); }
   .opponent .name { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .opponent .hand-count { font-size: 11px; }
   .opponent .penalty { font-size: 11px; padding: 1px 7px; }
   /* 手机端：操作栏按钮更紧凑，仍保持单行可换行、不重叠 */
-  #action-bar { gap: 6px; bottom: calc(14px + 68px + 22px); }
+  #action-bar { gap: 6px; bottom: 136px; }
   #action-bar button { padding: 8px 14px; font-size: 13px; border-radius: 18px; }
   #action-bar .btn-grab-card { font-size: 13px; }
-  #status-bar { font-size: 12px; padding: 6px 12px; bottom: calc(14px + 68px + 86px); }
-  #hand-area { bottom: 6px; max-width: 100vw; padding: 16px 6px 4px; }
+  #status-bar { font-size: 12px; padding: 6px 12px; bottom: 176px; }
+  /* 手机端：手牌整体上移，不再贴着屏幕底边 */
+  #hand-area { bottom: 34px; max-width: 100vw; padding: 18px 6px 6px; }
+}
+
+/* 横屏/矮屏（如手机横放）：压缩牌面与底部区域，避免纵向挤成一团 */
+@media (max-height: 520px) {
+  :root { --card-w: 42px; --card-h: 60px; }
+  #hand-area { bottom: 8px; padding: 14px 8px 4px; }
+  #action-bar { bottom: calc(var(--card-h) + 32px); }
+  #status-bar { bottom: calc(var(--card-h) + 72px); }
+  .my-rank { bottom: calc(var(--card-h) + 104px); font-size: 16px; padding: 6px 16px; }
+  #game-log, #game-spectators { display: none; }
+  #center-area { transform: translate(-50%, -55%); }
+  .opp-hand { height: 34px; }
+  .opp-card-back { width: 24px; height: 34px; }
+  .opp-card-back + .opp-card-back { margin-left: -18px; }
 }
 
 /* 窄屏/手机：观战席移到左上角横排（放在房间号下方），避免被西侧对手的卡牌挡住 */

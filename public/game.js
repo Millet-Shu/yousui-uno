@@ -367,12 +367,13 @@ function renderGame(state) {
     if (p && !p.isYou) ordered.push(p);
   }
 
+  const narrow = window.innerWidth <= 900;  // 窄屏顶部有观战席横条，座位需要让位
   ordered.forEach((p, i) => {
     const pos = seatPositions[i % seatPositions.length];
     const div = document.createElement('div');
     div.className = 'opponent ' + (p.isCurrent ? ' current' : '');
     div.style.left = pos.x + '%';
-    div.style.top = pos.y + '%';
+    div.style.top = (narrow ? Math.max(pos.y, 30) : pos.y) + '%';
     div.style.transform = 'translate(-50%, -50%)';
     const penalty = (p.isCurrent && state.pendingDraw > 0) ? `<div class="penalty">+${state.pendingDraw}</div>` : '';
     const rankLabel = p.finished ? `<div class="rank">第 ${p.rank} 名</div>` : '';
@@ -505,6 +506,7 @@ function renderGame(state) {
 
   // ✅ 手牌：排序时带上 originalIndex，避免 indexOf 错位
   const handEl = $('hand-area');
+  const prevScroll = handEl.scrollLeft;  // 记住横向拖动位置，状态刷新时不要跳回最左
   handEl.innerHTML = '';
 
   // 观战者看不到手牌内容，只显示所有人的牌背
@@ -564,22 +566,17 @@ function renderGame(state) {
     handEl.appendChild(div);
   });
 
-  // 手牌过多时按可用宽度自动重叠收窄：整手牌都看得见，并且保持居中
+  // 放得下就整体居中；放不下改为左对齐并允许横向拖动（不再压缩重叠）
   requestAnimationFrame(() => {
-    const cards = handEl.querySelectorAll('.hand-card');
-    const n = cards.length;
-    if (n < 2) return;
-    cards.forEach(c => { c.style.marginLeft = ''; });
-    const cardW = cards[0].getBoundingClientRect().width;
-    const avail = handEl.getBoundingClientRect().width - 20;  // 扣掉左右 padding
-    const natural = n * cardW;
-    if (natural <= avail) return;
-    const gap = 6;
-    const overlap = Math.min(cardW * 0.68, (natural + (n - 1) * gap - avail) / (n - 1));
-    if (overlap <= 0) return;
-    cards.forEach((c, i) => {
-      if (i > 0) c.style.marginLeft = -(overlap + gap) + 'px';
-    });
+    if (!handEl.firstElementChild || !handEl.lastElementChild) return;
+    handEl.classList.remove('scrollable');
+    const box = handEl.getBoundingClientRect();
+    const first = handEl.firstElementChild.getBoundingClientRect();
+    const last = handEl.lastElementChild.getBoundingClientRect();
+    if (last.right > box.right + 1 || first.left < box.left - 1) {
+      handEl.classList.add('scrollable');
+    }
+    handEl.scrollLeft = prevScroll;
   });
 }
 
