@@ -446,46 +446,6 @@ function resolveWildColor(room, playerId, color) {
   openGrabWindow(room, player);
 }
 
-// 打开抢牌窗口：手上有和顶牌完全相同的牌即可抢（含出牌者自己，可连出）
-function openGrabWindow(room, playedBy) {
-  room.grabAvailable = null;
-  const lastCard = room.topCard;
-  const candidates = [];
-  for (const p of room.players) {
-    if (p.finished) continue;
-    const idx = p.hand.findIndex(c =>
-      c.color === lastCard.color && c.type === lastCard.type && c.value === lastCard.value
-    );
-    if (idx >= 0) candidates.push({ playerId: p.id, cardIndex: idx });
-  }
-
-  if (candidates.length > 0) {
-    room.grabAvailable = { card: lastCard, playedBy: playedBy.name, candidates };
-    // AI（含离线代理）自动抢牌
-    for (const cand of candidates) {
-      const p = room.players.find(x => x.id === cand.playerId);
-      if (p && isAutoPlayer(p)) {
-        setTimeout(() => {
-          if (room.grabAvailable && room.grabAvailable.candidates.some(c => c.playerId === p.id)) {
-            grabCard(room, p.id);
-          }
-        }, 700 + Math.random() * 900);
-      }
-    }
-    // 3 秒内没人抢就自动关闭，防止卡住游戏
-    setTimeout(() => {
-      if (room.grabAvailable && room.grabAvailable.candidates === candidates) {
-        room.grabAvailable = null;
-        broadcastRoom(room);
-        scheduleIfAuto(room);
-      }
-    }, 3000);
-  }
-
-  broadcastRoom(room);
-  if (!room.grabAvailable) scheduleIfAuto(room);
-}
-
 function drawCard(room, playerId) {
   if (room.status !== 'playing' || room.paused) return;
   const player = room.players[room.currentIndex];
