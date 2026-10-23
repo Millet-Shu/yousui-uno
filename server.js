@@ -532,6 +532,32 @@ function isRoomOwner(room, socketId, playerId) {
   return socketId === room.ownerSocketId;
 }
 
+// 找出当前房主对象（玩家或观战者）；找不到说明房主身份已失效
+function findOwner(room) {
+  if (!room.ownerPlayerId) return null;
+  return room.players.find(p => p.id === room.ownerPlayerId)
+    || (room.spectators || []).find(s => s && s.id === room.ownerPlayerId)
+    || null;
+}
+
+// 房主身份丢失（离开/被踢/换号）时兜底选一个新房主，避免全房间没人能开始游戏
+function ensureOwner(room) {
+  const cur = findOwner(room);
+  if (cur) {
+    if (cur.socketId) room.ownerSocketId = cur.socketId;  // 同步可能变过的 socket
+    return;
+  }
+  const next = pickNextOwner(room);
+  if (next) {
+    room.ownerPlayerId = next.id;
+    room.ownerSocketId = next.socketId;
+    addLog(room, `房主转移给 ${next.name}`);
+  } else {
+    room.ownerPlayerId = null;
+    room.ownerSocketId = null;
+  }
+}
+
 function advance(room) {
   const n = room.players.length;
   if (n === 0) return;
@@ -767,6 +793,7 @@ io.on('connection', (socket) => {
       room.spectators[emptyIdx] = sp;
       currentRoom = room;
       currentPlayerId = sp.id;   // 记录观战者身份，否则退出时清不掉自己
+      ensureOwner(room);         // 已定义于 L543：房间若没有有效房主，由新加入者接管
       addLog(room, `${name} 进入观战席`);
       socket.emit('roomJoined', { code: room.code, playerId: sp.id, spectator: true });
       broadcastRoom(room);
@@ -777,6 +804,7 @@ io.on('connection', (socket) => {
     room.players.push(player);
     currentRoom = room;
     currentPlayerId = player.id;
+    ensureOwner(room);   // 已定义于 L543：房间若没有有效房主，由新加入者接管
     addLog(room, `${player.name} 加入房间`);
     socket.emit('roomJoined', { code: room.code, playerId: player.id });
     broadcastRoom(room);
@@ -862,7 +890,7 @@ io.on('connection', (socket) => {
         if (ks) ks.emit('kicked', { reason: `你被房主踢出了房间` });
       }
 
-      if (room.players.length === 0) { rooms.delete(room.code); return; }
+      if (room.players.length === 0 && !(room.spectators || []).some(s => s)) { rooms.delete(room.code); return; }
 
       // 修正轮次指针：被踢者在当前位之前则整体前移
       if (room.status === 'playing') {
@@ -911,6 +939,7 @@ io.on('connection', (socket) => {
       room.players.push(newPlayer);
       addLog(room, `${sp.name} 从观战席加入游戏`);
       currentPlayerId = sp.id;
+      ensureOwner(room);   // 已定义于 L543，校正/兜底房主身份
       socket.emit('roomJoined', { code: room.code, playerId: sp.id });
       broadcastRoom(room);
     }
@@ -948,6 +977,9 @@ io.on('connection', (socket) => {
     room.spectators[pos] = { id: spId, name: p.name, socketId: socket.id };
     addLog(room, `${p.name} 进入观战席`);
     currentPlayerId = spId;
+    ensureOwner(room);   // 已定义于 L543，校正/兜底房主身份
+    // 告知前端新的身份 id：否则刷新后按旧 id 重连失败，会被当成新玩家
+    socket.emit('roomJoined', { code: room.code, playerId: spId, spectator: true });
     broadcastRoom(room);
   });
 
@@ -1064,8 +1096,11 @@ io.on('connection', (socket) => {
       addLog(room, `${s.name} 退出观战席`);
       if (isRoomOwner(room, socket.id, currentPlayerId)) transferOwner(room, room.ownerSocketId);
     }
-    if (room.players.length === 0) rooms.delete(room.code);
+    const hasSpectator = (room.spectators || []).some(s => s);
+    // 还有观战者时不能删房，否则留在观战席上的人会被静默踢回首页
+    if (room.players.length === 0 && !hasSpectator) rooms.delete(room.code);
     else {
+      ensureOwner(room);   // 已定义于 L543：房主已离开且无人接管时兜底选人
       broadcastRoom(room);
       scheduleIfAuto(room, 800);
     }
