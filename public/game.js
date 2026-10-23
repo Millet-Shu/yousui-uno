@@ -293,7 +293,7 @@ function renderGame(state) {
     { x: 15, y: 68 },  // 西南
   ];
   const seatPositions = isSpectator
-    ? (total <= 4 ? [...ring4, { x: 50, y: 76 }] : [...ring8, { x: 50, y: 76 }])  // 补一个南位
+    ? (total <= 4 ? [...ring4, { x: 50, y: 58 }] : [...ring8, { x: 50, y: 58 }])  // 观战者补南位，让开底部手牌区
     : (total <= 4 ? ring4 : ring8);
 
   // 按出牌顺序（direction=1 时沿数组递增，视觉逆时针）从我的下家开始排座
@@ -466,8 +466,9 @@ function renderGame(state) {
     if (playable && state.pendingDraw > 0) {
       playable = (card.type === 3 || card.type === 5);
     }
+    // wildPending 时整手牌禁用（必须通过颜色弹窗选色，防止乱点把 currentColor 置 null）
     // 可抢牌：手上有和刚打出的牌完全一样的牌（包括自己刚打出的，可连出）
-    const canGrabCard = !myTurn && state.status === 'playing' && state.grabAvailable &&
+    const canGrabCard = !myTurn && state.status === 'playing' && !state.wildPending && state.grabAvailable &&
       card.color === state.grabAvailable.card.color &&
       card.type === state.grabAvailable.card.type &&
       card.value === state.grabAvailable.card.value;

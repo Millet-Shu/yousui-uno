@@ -300,7 +300,10 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   const player = room.players[room.currentIndex];
   if (!player || player.id !== playerId) return;
   if (room.wildPending) {
-    resolveWildColor(room, playerId, chosenColor);
+    // wildPending 期间必须通过颜色弹窗传合法颜色，不能乱点手牌绕过
+    if (chosenColor && ['red', 'yellow', 'green', 'blue'].includes(chosenColor)) {
+      resolveWildColor(room, playerId, chosenColor);
+    }
     return;
   }
 
@@ -447,14 +450,49 @@ function resolveWildColor(room, playerId, color) {
   if (!player || player.id !== playerId) return;
   room.currentColor = color;
   room.wildPending = false;
+  // 选色完成，之前举报窗口不再适用（下一玩家即将行动）
+  room.pendingReport = null;
   addLog(room, `${player.name} 指定颜色 ${colorName(color)}`);
   advance(room);
 
   checkWin(room);
   if (room.status === 'over') { broadcastRoom(room); return; }
 
+  // 选色完成后重新检查抢牌机会（用新确定的颜色做 isPlayable）
+  room.grabAvailable = null;
+  const lastCard = room.topCard;
+  const candidates = [];
+  for (const p of room.players) {
+    if (p.finished) continue;
+    const idx = p.hand.findIndex(c =>
+      c.color === lastCard.color && c.type === lastCard.type && c.value === lastCard.value
+    );
+    if (idx >= 0) candidates.push({ playerId: p.id, cardIndex: idx });
+  }
+  if (candidates.length > 0) {
+    room.grabAvailable = { card: lastCard, playedBy: player.name, candidates };
+    for (const cand of candidates) {
+      const p = room.players.find(x => x.id === cand.playerId);
+      if (p && isAutoPlayer(p)) {
+        setTimeout(() => {
+          if (room.grabAvailable && room.grabAvailable.candidates.some(c => c.playerId === p.id)) {
+            grabCard(room, p.id);
+          }
+        }, 700 + Math.random() * 900);
+      }
+    }
+    setTimeout(() => {
+      if (room.grabAvailable && room.grabAvailable.candidates === candidates) {
+        room.grabAvailable = null;
+        broadcastRoom(room);
+        scheduleIfAuto(room);
+      }
+    }, 3000);
+  }
+
   broadcastRoom(room);
-  scheduleIfAuto(room);
+
+  if (!room.grabAvailable) scheduleIfAuto(room);
 }
 
 function drawCard(room, playerId) {
@@ -936,6 +974,10 @@ io.on('connection', (socket) => {
     if (p) {
       room.paused = true;
       room.pausedBy = p.name;
+      // 清掉所有挂起的异步状态，resume 后重新建立
+      room.aiTurnPending = false;
+      room.grabAvailable = null;
+      room.wildPending = false;
       addLog(room, `${p.name} 暂停了游戏`);
       broadcastRoom(room);
     }
