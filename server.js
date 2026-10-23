@@ -115,6 +115,7 @@ function createRoom(maxPlayers = 4) {
     aiTurnPending: false,        // ✅ AI 去重保护
     paused: false,
     pausedBy: null,
+    pausedById: null,
     grabAvailable: null,  // 可以抢牌的状态 { card, playedBy }
     log: []
   });
@@ -163,7 +164,7 @@ function publicRoomState(room, selfPlayer) {
     wildPending: room.wildPending,
     paused: !!room.paused,
     pausedBy: room.pausedBy || null,
-    isPausedByYou: room.pausedBy === (selfPlayer ? selfPlayer.name : ''),
+    isPausedByYou: room.pausedById ? room.pausedById === selfId : room.pausedBy === (selfPlayer ? selfPlayer.name : ''),
     pendingReport: room.pendingReport,
     myUnoCalled: selfId ? !!room.unoCalled[selfId] : false,
     drawPileCount: room.drawPile.length,
@@ -237,6 +238,7 @@ function startGame(room) {
   room.grabAvailable = null;    // ✅ 重开时清理抢牌窗口
   room.paused = false;          // ✅ 重开时不能在暂停状态
   room.pausedBy = null;
+  room.pausedById = null;
   room.pendingReport = null;
   room.unoCalled = {};
   room.log = [];
@@ -812,6 +814,7 @@ io.on('connection', (socket) => {
     room.grabAvailable = null;
     room.paused = false;
     room.pausedBy = null;
+    room.pausedById = null;
     addLog(room, '回到房间等待区');
     broadcastRoom(room);
   });
@@ -988,7 +991,7 @@ io.on('connection', (socket) => {
     const temp = room.spectators[fromIdx];
     room.spectators[fromIdx] = room.spectators[toIdx];
     room.spectators[toIdx] = temp;
-    addLog(room, `${temp.name} 和 ${room.spectators[fromIdx].name} 交换了位置`);
+    addLog(room, `${room.spectators[toIdx].name} 和 ${room.spectators[fromIdx].name} 交换了位置`);
     socket.emit('swapRequestResult', { accepted: true });
     broadcastRoom(room);
   });
@@ -1001,16 +1004,17 @@ io.on('connection', (socket) => {
     const room = currentRoom;
     if (!room || room.status !== 'playing' || room.paused) return;
     const me = room.players.find(p => p.id === currentPlayerId);
-    if (!me) return;
-    // 只有房主或当前该出牌的玩家能暂停，避免多人乱点
-    if (!isRoomOwner(room, socket.id, currentPlayerId) && room.players[room.currentIndex]?.id !== currentPlayerId) return;
+    const owner = isRoomOwner(room, socket.id, currentPlayerId);
+    // 只有房主（含在观战席上的房主）或当前该出牌的玩家能暂停
+    if (!owner && (!me || room.players[room.currentIndex]?.id !== currentPlayerId)) return;
     room.paused = true;
-    room.pausedBy = me.name;
+    room.pausedBy = me ? me.name : '房主';
+    room.pausedById = currentPlayerId;
     // 清掉挂起的异步调度与抢牌窗口，恢复后重新建立
     // 注意：wildPending 是"等待选色"状态，不能清，否则这一手会卡死
     room.aiTurnPending = false;
     room.grabAvailable = null;
-    addLog(room, `${me.name} 暂停了游戏`);
+    addLog(room, `${room.pausedBy} 暂停了游戏`);
     broadcastRoom(room);
   });
 
@@ -1018,10 +1022,10 @@ io.on('connection', (socket) => {
     const room = currentRoom;
     if (!room || !room.paused) return;
     // 只有暂停的人或房主可以恢复
-    const me = room.players.find(p => p.id === currentPlayerId);
-    if (!me || (room.pausedBy !== me.name && !isRoomOwner(room, socket.id, currentPlayerId))) return;
+    if (room.pausedById !== currentPlayerId && !isRoomOwner(room, socket.id, currentPlayerId)) return;
     room.paused = false;
     room.pausedBy = null;
+    room.pausedById = null;
     room.aiTurnPending = false;
     addLog(room, '游戏继续');
     broadcastRoom(room);

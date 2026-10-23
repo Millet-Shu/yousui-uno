@@ -438,7 +438,7 @@ function renderGame(state) {
         const div = document.createElement('div');
         div.className = 'game-spectator-avatar';
         div.textContent = escapeHtml(s.name)[0];  // ✅ 防 XSS
-        div.title = escapeHtml(s.name);
+        div.title = escapeHtml(s.name) + (s.isOwner ? '（房主）' : '');
         gameSpList.appendChild(div);
       });
     }
