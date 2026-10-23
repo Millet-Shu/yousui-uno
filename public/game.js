@@ -7,6 +7,11 @@ let leftRoom = false;
 let showHandCount = false;  // 是否显示手牌数量（默认关闭）
 let currentGameState = null;
 
+// 刷新/断线重连：认领回原来的座位，避免服务端留下"AI 代理的幽灵玩家"
+socket.on('connect', () => {
+  if (myPlayerId && myRoomCode && !leftRoom) socket.emit('reconnect', { playerId: myPlayerId });
+});
+
 // DOM
 const $ = id => document.getElementById(id);
 
@@ -151,6 +156,17 @@ socket.on('swapRequestResult', ({ accepted }) => {
   }
 });
 
+// 被房主踢出：必须回到首页，否则界面会残留成观战者
+socket.on('kicked', ({ reason } = {}) => {
+  socket.emit('leaveRoom');  // 让服务端清掉本连接的房间引用，避免后续创建房间被拒
+  localStorage.clear();
+  myPlayerId = null;
+  myRoomCode = null;
+  leftRoom = true;
+  alert(reason || '你已被踢出房间');
+  showScreen('home');
+});
+
 socket.on('roomUpdate', (state) => {
   if (leftRoom) return;
   if (state.status === 'waiting') {
@@ -167,19 +183,49 @@ function renderLobby(state) {
   $('lobby-code').textContent = state.code || '';
   $('btn-start').classList.toggle('hidden', !state.isOwner);
   $('btn-addai').classList.toggle('hidden', !state.isOwner);
+
   const list = $('lobby-players');
   list.innerHTML = `<div class="section-title">玩家 <span class="count">${state.players.length}/${state.maxPlayers}</span></div>`;
-  state.players.forEach((p, i) => {
-    const div = document.createElement('div');
-    div.className = 'player';
-    const delBtn = p.isAI ? `<button class="del-btn" onclick="socket.emit('removeAI',{index:${i}})" title="移除AI">×</button>` : '';
-    // 房主可以踢非房主非AI的玩家
-    const kickBtn = state.isOwner && !p.isOwner && !p.isAI ? `<button class="kick-btn" onclick="if(confirm('确定踢出 ${escapeHtml(p.name)} 吗？')) socket.emit('kickPlayer',{playerId:'${p.id}'})" title="踢出">踢出</button>` : '';
-    const ownerBadge = p.isOwner ? `<span class="owner-badge">房主</span>` : '';
-    // ✅ escapeHtml 防 XSS
-    div.innerHTML = `<span>${escapeHtml(p.name)}${p.isYou ? ' (你)' : ''} ${ownerBadge}</span><span>${delBtn}${kickBtn}</span><span class="badge">${p.isAI ? 'AI' : '玩家'}</span>`;
-    list.appendChild(div);
+
+  state.players.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'player';
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'player-name';
+    nameEl.textContent = p.name + (p.isYou ? ' (你)' : '');
+    if (p.isOwner) {
+      const ob = document.createElement('span');
+      ob.className = 'owner-badge';
+      ob.textContent = '房主';
+      nameEl.appendChild(ob);
+    }
+
+    const actions = document.createElement('span');
+    actions.className = 'player-actions';
+
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = p.isAI ? 'AI' : '玩家';
+    actions.appendChild(badge);
+
+    // 房主可移除非自己的 AI / 玩家（用 DOM 事件，避免名字里有引号破坏内联脚本）
+    if (state.isOwner && !p.isOwner) {
+      const btn = document.createElement('button');
+      btn.className = 'mini-btn danger';
+      btn.textContent = p.isAI ? '移除' : '踢出';
+      btn.onclick = () => {
+        if (!p.isAI && !confirm(`确定踢出 ${p.name} 吗？`)) return;
+        socket.emit(p.isAI ? 'removeAI' : 'kickPlayer', p.isAI ? { id: p.id } : { playerId: p.id });
+      };
+      actions.appendChild(btn);
+    }
+
+    row.appendChild(nameEl);
+    row.appendChild(actions);
+    list.appendChild(row);
   });
+
   if (state.players.length < state.maxPlayers) {
     const addBox = document.createElement('div');
     addBox.className = 'add-slot';
@@ -239,6 +285,18 @@ function renderLobby(state) {
 // ===== 渲染游戏页 =====
 const T_LABEL = { 0: '', 1: '⊘', 2: '⇄', 3: '+2', 4: '万能', 5: '+4' };
 
+// 座位坐标（百分比）：≤4 人用东南西北大方位，>4 人用紧凑环绕
+const SEAT_RING_4 = [
+  { x: 85, y: 50 },  // 东（我的右侧）
+  { x: 50, y: 20 },  // 北（对面）
+  { x: 15, y: 50 },  // 西（我的左侧）
+];
+const SEAT_RING_8 = [
+  { x: 85, y: 68 }, { x: 85, y: 45 }, { x: 85, y: 22 },
+  { x: 50, y: 20 },
+  { x: 15, y: 22 }, { x: 15, y: 45 }, { x: 15, y: 68 },
+];
+
 function cardText(c) {
   if (c.type === 0) return String(c.value);
   return T_LABEL[c.type];
@@ -275,26 +333,10 @@ function renderGame(state) {
   const meIdx = Math.max(players.findIndex(p => p.isYou), 0);
 
   // 座位：以"我"为南位（底部），从我的下家开始沿出牌顺序逆时针排列
-  // ≤4人：标准东南西北大方位（东=我右侧 → 北=对面 → 西=我左侧）
-  // >4人：紧凑环绕布局
-  // 观战者没有自己的座位，所有人的牌都按完整方位环绕显示
-  const ring4 = [
-    { x: 85, y: 50 },  // 东
-    { x: 50, y: 20 },  // 北
-    { x: 15, y: 50 },  // 西
-  ];
-  const ring8 = [
-    { x: 85, y: 68 },  // 东南
-    { x: 85, y: 45 },  // 东
-    { x: 85, y: 22 },  // 东北
-    { x: 50, y: 20 },  // 北
-    { x: 15, y: 22 },  // 西北
-    { x: 15, y: 45 },  // 西
-    { x: 15, y: 68 },  // 西南
-  ];
+  // 观战者没有自己的座位，补一个南位显示全部玩家
   const seatPositions = isSpectator
-    ? (total <= 4 ? [...ring4, { x: 50, y: 58 }] : [...ring8, { x: 50, y: 58 }])  // 观战者补南位，让开底部手牌区
-    : (total <= 4 ? ring4 : ring8);
+    ? [...(total <= 4 ? SEAT_RING_4 : SEAT_RING_8), { x: 50, y: 58 }]
+    : (total <= 4 ? SEAT_RING_4 : SEAT_RING_8);
 
   // 按出牌顺序（direction=1 时沿数组递增，视觉逆时针）从我的下家开始排座
   // 观战者没有"我"，从第一个玩家开始把所有人排满
@@ -316,7 +358,7 @@ function renderGame(state) {
     const penalty = (p.isCurrent && state.pendingDraw > 0) ? `<div class="penalty">+${state.pendingDraw}</div>` : '';
     const rankLabel = p.finished ? `<div class="rank">第 ${p.rank} 名</div>` : '';
     const unoLabel = p.unoCalled ? `<div class="uno-called">📢 有岁！</div>` : '';
-    const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id)
+    const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id && !p.isYou)
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
     let cardsHtml = '';
     const maxStack = 11;
@@ -342,17 +384,16 @@ function renderGame(state) {
     $('status-text').textContent = '游戏结束！';
   } else if (state.status === 'grabbing') {
     $('status-text').textContent = '抢"有岁"先手！点下面按钮！';
+  } else if (state.grabAvailable) {
+    $('status-text').textContent = `⚡ ${escapeHtml(state.grabAvailable.playedBy)} 刚打出 ${cardText(state.grabAvailable.card)}，你可以抢相同的牌！`;
   } else if (state.wildPending && myTurn) {
     $('status-text').textContent = '请选择颜色';
-    $('color-modal').classList.remove('hidden');
   } else if (myTurn && state.pendingDraw > 0) {
     $('status-text').textContent = `罚牌 +${state.pendingDraw}：出+2/+4叠加，否则自动摸牌`;
   } else if (myTurn) {
     $('status-text').textContent = '轮到你出牌！';
   } else if (state.pendingDraw > 0) {
     $('status-text').textContent = `${escapeHtml(state.currentPlayerName)} 面临 +${state.pendingDraw} 罚牌...`;
-  } else if (state.grabAvailable) {
-    $('status-text').textContent = `⚡ ${escapeHtml(state.grabAvailable.playedBy)} 刚打出 ${cardText(state.grabAvailable.card)}，你可以抢相同的牌！`;
   } else {
     $('status-text').textContent = `等待 ${escapeHtml(state.currentPlayerName)} 出牌...`;
   }
@@ -362,10 +403,10 @@ function renderGame(state) {
   $('btn-uno').classList.toggle('hidden', !(myHandCount === 2 && myTurn && state.status === 'playing'));
   if (state.myUnoCalled) {
     $('btn-uno').textContent = '✓ 有岁（再点取消）';
-    $('btn-uno').style.background = '#30b050';
+    $('btn-uno').classList.add('called');
   } else {
     $('btn-uno').textContent = '喊"有岁"';
-    $('btn-uno').style.background = '';
+    $('btn-uno').classList.remove('called');
   }
 
   // 我的名次
@@ -395,21 +436,25 @@ function renderGame(state) {
     }
   }
 
-  $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing');
+  // 颜色弹窗：只有"服务端要求选色"或"本地已点开万能牌"时才显示，否则自动关闭
+  const needColor = !!myTurn && (state.wildPending || window._pendingCardIndex !== undefined);
+  $('color-modal').classList.toggle('hidden', !needColor);
+  if (!needColor) window._pendingCardIndex = undefined;
+
+  $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing' || isSpectator);
   $('btn-restart').classList.toggle('hidden', !state.isOwner);
   $('btn-endgame').classList.toggle('hidden', !state.isOwner);
 
   // 抢牌按钮：我可以抢牌时显示（服务器已按候选人过滤）
   $('btn-grab-card').classList.toggle('hidden', !state.grabAvailable);
 
-  const myTurn2 = state.players.find(p => p.isYou && p.isCurrent);
-  if (myTurn2 && state.status === 'playing' && !state.wildPending && state.pendingDraw > 0) {
+  if (myTurn && state.status === 'playing' && !state.wildPending && state.pendingDraw > 0) {
     $('btn-pass').textContent = `不出(摸${state.pendingDraw}张)`;
     $('btn-pass').classList.remove('hidden');
   } else {
     $('btn-pass').classList.add('hidden');
   }
-  if (myTurn2 && state.status === 'playing' && state.justDrew) {
+  if (myTurn && state.status === 'playing' && state.justDrew) {
     $('btn-skip').classList.remove('hidden');
   } else {
     $('btn-skip').classList.add('hidden');

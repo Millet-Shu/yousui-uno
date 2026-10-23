@@ -175,7 +175,7 @@ function publicRoomState(room, selfPlayer) {
       if (!me) return null;
       return { card: room.grabAvailable.card, playedBy: room.grabAvailable.playedBy, cardIndex: me.cardIndex };
     })(),
-    spectators: (room.spectators || []).slice(0, 5).map(s => s ? { name: s.name, isYou: s.id === selfId, isOwner: s.socketId === room.ownerSocketId } : null),
+    spectators: (room.spectators || []).slice(0, 5).map(s => s ? { id: s.id, name: s.name, isYou: s.id === selfId, isOwner: s.socketId === room.ownerSocketId } : null),
     log: room.log.slice(-20)
   };
 }
@@ -233,6 +233,10 @@ function startGame(room) {
   room.justDrew = false;        // ✅ 清零
   room.aiTurnPending = false;
   room.grabAvailable = null;    // ✅ 重开时清理抢牌窗口
+  room.paused = false;          // ✅ 重开时不能在暂停状态
+  room.pausedBy = null;
+  room.pendingReport = null;
+  room.unoCalled = {};
   room.log = [];
 
   addLog(room, `游戏开始！抢"有岁"先手！`);
@@ -310,6 +314,7 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   const card = player.hand[cardIndex];
   if (!card) return;
   if (!isPlayable(card, room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType)) return;
+  room.grabAvailable = null;  // 有人已行动，抢牌窗口关闭
 
   const myUnoCalled = !!room.unoCalled[player.id];
   for (const pid in room.unoCalled) {
@@ -321,9 +326,9 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   room.topCard = card;
   room.justDrew = false;
 
-  // 没喊有岁就出到剩 1 张 → 可以被举报
+  // 没喊有岁就出到剩 1 张 → 可以被举报（5 秒内有效）
   if (room.status === 'playing' && player.hand.length === 1 && !myUnoCalled) {
-    room.pendingReport = { playerId: player.id, playerName: player.name };
+    setPendingReport(room, player);
   } else {
     room.pendingReport = null;
   }
@@ -364,24 +369,14 @@ function handleCardEffect(room, player, card, chosenColor) {
       advance(room);
       break;
     case T.WILD:
-      if (chosenColor) {
-        room.currentColor = chosenColor;
-        addLog(room, `${player.name} 指定颜色 ${colorName(chosenColor)}`);
-        advance(room);
-      } else {
-        room.wildPending = true;
-      }
+      room.wildPending = true;
+      if (chosenColor) { resolveWildColor(room, player.id, chosenColor); return; }
       break;
     case T.WILD_DRAW_FOUR:
       room.pendingDraw += 4;
       room.pendingDrawType = T.WILD_DRAW_FOUR;
-      if (chosenColor) {
-        room.currentColor = chosenColor;
-        addLog(room, `${player.name} 指定颜色 ${colorName(chosenColor)}`);
-        advance(room);
-      } else {
-        room.wildPending = true;
-      }
+      room.wildPending = true;
+      if (chosenColor) { resolveWildColor(room, player.id, chosenColor); return; }
       break;
   }
 
@@ -390,75 +385,11 @@ function handleCardEffect(room, player, card, chosenColor) {
 
   if (room.wildPending) { broadcastRoom(room); return; }
 
-  // 检查谁可以抢牌：手上有和刚打出的牌完全一样的牌（包括刚打出的人自己，可以连出）
-  room.grabAvailable = null;
-  const lastCard = room.topCard;
-  const candidates = [];
-  for (const p of room.players) {
-    if (p.finished) continue;  // 只排除已经打完的
-    const idx = p.hand.findIndex(c =>
-      c.color === lastCard.color && c.type === lastCard.type && c.value === lastCard.value
-    );
-    if (idx >= 0) candidates.push({ playerId: p.id, cardIndex: idx });
-  }
-  if (candidates.length > 0) {
-    room.grabAvailable = { card: lastCard, playedBy: player.name, candidates };
-    // AI 自动抢牌
-    for (const cand of candidates) {
-      const p = room.players.find(x => x.id === cand.playerId);
-      if (p && isAutoPlayer(p)) {
-        setTimeout(() => {
-          if (room.grabAvailable && room.grabAvailable.candidates.some(c => c.playerId === p.id)) {
-            grabCard(room, p.id);
-          }
-        }, 700 + Math.random() * 900);
-      }
-    }
-    // 抢牌窗口 3 秒超时自动关闭，防止没人抢时卡住游戏
-    setTimeout(() => {
-      if (room.grabAvailable && room.grabAvailable.candidates === candidates) {
-        room.grabAvailable = null;
-        broadcastRoom(room);
-        scheduleIfAuto(room);
-      }
-    }, 3000);
-  }
-
-  broadcastRoom(room);
-
-  if (!room.grabAvailable) scheduleIfAuto(room);
+  openGrabWindow(room, player);
 }
 
-// 检查当前玩家是否可以叠加罚牌（手里有 +2/+4 时自动让过，让他们选择出 or 摸）
-// 这个函数保留但改为仅用于 checkPendingDraw 后的状态确认，实际逻辑已在 drawCard 中处理
-function checkPendingDraw(room) {
-  if (room.pendingDraw <= 0) return;
-  const player = room.players[room.currentIndex];
-  if (!player) return;
-  const canStack = player.hand.some(c => c.type === T.DRAW_TWO || c.type === T.WILD_DRAW_FOUR);
-  if (!canStack) {
-    const drawn = drawCards(room, room.pendingDraw);
-    player.hand.push(...drawn);
-    addLog(room, `${player.name} 摸了 ${drawn.length} 张`);
-    room.pendingDraw = 0;
-    room.pendingDrawType = null;   // ✅ 之前没清
-  }
-}
-
-function resolveWildColor(room, playerId, color) {
-  const player = room.players[room.currentIndex];
-  if (!player || player.id !== playerId) return;
-  room.currentColor = color;
-  room.wildPending = false;
-  // 选色完成，之前举报窗口不再适用（下一玩家即将行动）
-  room.pendingReport = null;
-  addLog(room, `${player.name} 指定颜色 ${colorName(color)}`);
-  advance(room);
-
-  checkWin(room);
-  if (room.status === 'over') { broadcastRoom(room); return; }
-
-  // 选色完成后重新检查抢牌机会（用新确定的颜色做 isPlayable）
+// 打开抢牌窗口：手上有和顶牌完全相同的牌即可抢（含出牌者自己，可连出）
+function openGrabWindow(room, playedBy) {
   room.grabAvailable = null;
   const lastCard = room.topCard;
   const candidates = [];
@@ -469,8 +400,10 @@ function resolveWildColor(room, playerId, color) {
     );
     if (idx >= 0) candidates.push({ playerId: p.id, cardIndex: idx });
   }
+
   if (candidates.length > 0) {
-    room.grabAvailable = { card: lastCard, playedBy: player.name, candidates };
+    room.grabAvailable = { card: lastCard, playedBy: playedBy.name, candidates };
+    // AI（含离线代理）自动抢牌
     for (const cand of candidates) {
       const p = room.players.find(x => x.id === cand.playerId);
       if (p && isAutoPlayer(p)) {
@@ -481,6 +414,7 @@ function resolveWildColor(room, playerId, color) {
         }, 700 + Math.random() * 900);
       }
     }
+    // 3 秒内没人抢就自动关闭，防止卡住游戏
     setTimeout(() => {
       if (room.grabAvailable && room.grabAvailable.candidates === candidates) {
         room.grabAvailable = null;
@@ -491,7 +425,64 @@ function resolveWildColor(room, playerId, color) {
   }
 
   broadcastRoom(room);
+  if (!room.grabAvailable) scheduleIfAuto(room);
+}
 
+function resolveWildColor(room, playerId, color) {
+  if (!room.wildPending) return;  // 没有待选色状态，忽略乱点
+  const player = room.players[room.currentIndex];
+  if (!player || player.id !== playerId) return;
+  if (!['red', 'yellow', 'green', 'blue'].includes(color)) return;  // 非法颜色直接丢弃
+  room.currentColor = color;
+  room.wildPending = false;
+  // 选色完成，之前举报窗口不再适用（下一玩家即将行动）
+  room.pendingReport = null;
+  addLog(room, `${player.name} 指定颜色 ${colorName(color)}`);
+  advance(room);
+
+  checkWin(room);
+  if (room.status === 'over') { broadcastRoom(room); return; }
+
+  openGrabWindow(room, player);
+}
+
+// 打开抢牌窗口：手上有和顶牌完全相同的牌即可抢（含出牌者自己，可连出）
+function openGrabWindow(room, playedBy) {
+  room.grabAvailable = null;
+  const lastCard = room.topCard;
+  const candidates = [];
+  for (const p of room.players) {
+    if (p.finished) continue;
+    const idx = p.hand.findIndex(c =>
+      c.color === lastCard.color && c.type === lastCard.type && c.value === lastCard.value
+    );
+    if (idx >= 0) candidates.push({ playerId: p.id, cardIndex: idx });
+  }
+
+  if (candidates.length > 0) {
+    room.grabAvailable = { card: lastCard, playedBy: playedBy.name, candidates };
+    // AI（含离线代理）自动抢牌
+    for (const cand of candidates) {
+      const p = room.players.find(x => x.id === cand.playerId);
+      if (p && isAutoPlayer(p)) {
+        setTimeout(() => {
+          if (room.grabAvailable && room.grabAvailable.candidates.some(c => c.playerId === p.id)) {
+            grabCard(room, p.id);
+          }
+        }, 700 + Math.random() * 900);
+      }
+    }
+    // 3 秒内没人抢就自动关闭，防止卡住游戏
+    setTimeout(() => {
+      if (room.grabAvailable && room.grabAvailable.candidates === candidates) {
+        room.grabAvailable = null;
+        broadcastRoom(room);
+        scheduleIfAuto(room);
+      }
+    }, 3000);
+  }
+
+  broadcastRoom(room);
   if (!room.grabAvailable) scheduleIfAuto(room);
 }
 
@@ -546,10 +537,32 @@ function scheduleIfAuto(room, delay = 1000) {
   }
 }
 
+// 选下一个房主：优先非 AI 在线玩家 → 非 AI 离线玩家 → 在线观战者，绝不选 AI
+function pickNextOwner(room) {
+  return room.players.find(x => !x.isAI && !x.offline && x.socketId)
+    || room.players.find(x => !x.isAI && x.socketId)
+    || (room.spectators || []).find(s => s && s.socketId);
+}
+
+// 房主离开/掉线时转移房主；fromSocketId 必须仍是当前房主才转移
+function transferOwner(room, fromSocketId) {
+  if (room.ownerSocketId !== fromSocketId) return;
+  const next = pickNextOwner(room);
+  if (next) {
+    room.ownerSocketId = next.socketId;
+    addLog(room, `房主转移给 ${next.name}`);
+  } else {
+    room.ownerSocketId = null;
+    addLog(room, '房主离开，暂无可接管的玩家');
+  }
+}
+
 function advance(room) {
+  const n = room.players.length;
+  if (n === 0) return;
   let next = nextIndex(room, 1);
   let guard = 0;
-  while (room.players[next] && room.players[next].finished && guard < room.players.length) {
+  while (room.players[next] && room.players[next].finished && guard < n) {
     next = nextIndex(room, 1, next);
     guard++;
   }
@@ -588,9 +601,9 @@ function grabCard(room, playerId) {
   room.topCard = card;
   room.justDrew = false;
 
-  // 抢出后剩 1 张且没喊有岁 → 可被举报
+  // 抢出后剩 1 张且没喊有岁 → 可被举报（5 秒内有效）
   if (grabber.hand.length === 1 && !myUnoCalled) {
-    room.pendingReport = { playerId: grabber.id, playerName: grabber.name };
+    setPendingReport(room, grabber);
   } else {
     room.pendingReport = null;
   }
@@ -609,6 +622,20 @@ function grabCard(room, playerId) {
 
   // 重新处理牌效；万能牌让抢牌者自己选颜色（wildPending 流程）
   handleCardEffect(room, grabber, card, null);
+  // 抢到的是万能牌且抢牌者是 AI（含离线代理）时，需要立刻替它选色，否则会卡在选色
+  if (room.wildPending && isAutoPlayer(room.players[room.currentIndex])) scheduleIfAuto(room, 800);
+}
+
+// 设置举报窗口（5 秒后自动失效，避免过时的举报按钮一直挂着）
+function setPendingReport(room, player) {
+  const report = { playerId: player.id, playerName: player.name };
+  room.pendingReport = report;
+  setTimeout(() => {
+    if (room.status === 'playing' && room.pendingReport === report) {
+      room.pendingReport = null;
+      broadcastRoom(room);
+    }
+  }, 5000);
 }
 
 function checkWin(room) {
@@ -622,6 +649,11 @@ function checkWin(room) {
   const remaining = room.players.filter(p => !p.finished);
   if (remaining.length <= 1 && room.status === 'playing') {
     room.status = 'over';
+    // 对局结束：清掉所有挂起的抢牌/举报窗口，避免结束后按钮还亮着
+    room.grabAvailable = null;
+    room.pendingReport = null;
+    room.justDrew = false;
+    room.wildPending = false;
     if (remaining.length === 1) {
       remaining[0].rank = room.players.filter(x => x.finished).length + 1;
       addLog(room, `🏆 ${remaining[0].name} 第 ${remaining[0].rank} 名！`);
@@ -727,6 +759,7 @@ io.on('connection', (socket) => {
   socket.on('createRoom', ({ name, maxPlayers, mode }) => {
     name = (name || '').trim();
     if (!name) { socket.emit('errorMsg', '请输入名字'); return; }
+    if (currentRoom) { socket.emit('errorMsg', '你已经在房间里了'); return; }
     if (mode === 'yousui') { socket.emit('errorMsg', '有岁模式还在开发中，敬请期待！'); return; }
     maxPlayers = Math.min(Math.max(parseInt(maxPlayers) || 4, 2), 8);
     const room = createRoom(maxPlayers);
@@ -745,31 +778,21 @@ io.on('connection', (socket) => {
     code = (code || '').toUpperCase().trim();
     name = (name || '').trim();
     if (!name) { socket.emit('errorMsg', '请输入名字'); return; }
+    if (currentRoom) { socket.emit('errorMsg', '你已经在房间里了'); return; }
     const room = rooms.get(code);
     if (!room) { socket.emit('errorMsg', '房间不存在'); return; }
 
-    if (room.status !== 'waiting') {
+    // 开局后或人数已满 → 进观战席
+    if (room.status !== 'waiting' || room.players.length >= room.maxPlayers) {
       while (room.spectators.length < 5) room.spectators.push(null);
       const emptyIdx = room.spectators.findIndex(s => !s);
       if (emptyIdx < 0) { socket.emit('errorMsg', '观战席已满'); return; }
-      room.spectators[emptyIdx] = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id };
+      const sp = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id };
+      room.spectators[emptyIdx] = sp;
       currentRoom = room;
-      currentPlayerId = null;
+      currentPlayerId = sp.id;   // 记录观战者身份，否则退出时清不掉自己
       addLog(room, `${name} 进入观战席`);
-      socket.emit('roomJoined', { code: room.code, playerId: null, spectator: true });
-      broadcastRoom(room);
-      return;
-    }
-
-    if (room.players.length >= room.maxPlayers) {
-      while (room.spectators.length < 5) room.spectators.push(null);
-      const emptyIdx = room.spectators.findIndex(s => !s);
-      if (emptyIdx < 0) { socket.emit('errorMsg', '观战席已满'); return; }
-      room.spectators[emptyIdx] = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id };
-      currentRoom = room;
-      currentPlayerId = null;
-      addLog(room, `${name} 进入观战席`);
-      socket.emit('roomJoined', { code: room.code, playerId: null, spectator: true });
+      socket.emit('roomJoined', { code: room.code, playerId: sp.id, spectator: true });
       broadcastRoom(room);
       return;
     }
@@ -813,6 +836,8 @@ io.on('connection', (socket) => {
     room.justDrew = false;
     room.aiTurnPending = false;
     room.grabAvailable = null;
+    room.paused = false;
+    room.pausedBy = null;
     addLog(room, '回到房间等待区');
     broadcastRoom(room);
   });
@@ -829,11 +854,14 @@ io.on('connection', (socket) => {
     broadcastRoom(room);
   });
 
-  socket.on('removeAI', ({ index }) => {
+  socket.on('removeAI', ({ id, index }) => {
     const room = currentRoom;
-    if (!room || room.status !== 'waiting') return;
-    if (room.players[index] && room.players[index].isAI) {
-      room.players.splice(index, 1);
+    if (!room || room.status !== 'waiting' || socket.id !== room.ownerSocketId) return;
+    // 优先按 id 定位，避免列表刷新后 index 错位
+    let i = id ? room.players.findIndex(p => p.id === id) : -1;
+    if (i < 0 && Number.isInteger(index) && room.players[index] && room.players[index].isAI) i = index;
+    if (i >= 0 && room.players[i].isAI) {
+      room.players.splice(i, 1);
       broadcastRoom(room);
     }
   });
@@ -842,20 +870,40 @@ io.on('connection', (socket) => {
   socket.on('kickPlayer', ({ playerId }) => {
     const room = currentRoom;
     if (!room || socket.id !== room.ownerSocketId) return;
+    if (playerId === currentPlayerId) return;  // 不能踢自己
     // 踢玩家
     const pIdx = room.players.findIndex(p => p.id === playerId);
     if (pIdx >= 0) {
       const kicked = room.players[pIdx];
+      const wasCurrent = room.status === 'playing' && room.players[room.currentIndex] === kicked;
       room.players.splice(pIdx, 1);
       addLog(room, `房主踢出了 ${kicked.name}`);
-      // 如果被踢的是轮到行动的人，推进回合
-      if (room.status === 'playing' && room.currentIndex >= room.players.length) {
-        room.currentIndex = 0;
-      } else if (room.status === 'playing' && pIdx === room.currentIndex) {
-        // 保持 currentIndex 不变（数组已 splice，下一个人自动顶上来）
-        room.justDrew = false;
-        room.aiTurnPending = false;
+
+      // 通知被踢的人回首页，否则他的界面会残留成"观战者"
+      if (kicked.socketId) {
+        const ks = io.sockets.sockets.get(kicked.socketId);
+        if (ks) ks.emit('kicked', { reason: `你被房主踢出了房间` });
       }
+
+      if (room.players.length === 0) { rooms.delete(room.code); return; }
+
+      // 修正轮次指针：被踢者在当前位之前则整体前移
+      if (room.status === 'playing') {
+        if (pIdx < room.currentIndex) room.currentIndex -= 1;
+        const n = room.players.length;
+        room.currentIndex = ((room.currentIndex % n) + n) % n;
+        if (wasCurrent) {
+          // 轮到的人被踢，下一个人顶上来
+          room.justDrew = false;
+          room.aiTurnPending = false;
+          room.grabAvailable = null;
+          room.wildPending = false;  // 被踢者可能正在选色，不清会永久卡住
+          room.pendingReport = null;
+        }
+      } else if (room.currentIndex >= room.players.length) {
+        room.currentIndex = 0;
+      }
+
       broadcastRoom(room);
       scheduleIfAuto(room);
       return;
@@ -866,8 +914,11 @@ io.on('connection', (socket) => {
       const kicked = room.spectators[sIdx];
       room.spectators[sIdx] = null;
       addLog(room, `房主踢出观战者 ${kicked.name}`);
+      if (kicked.socketId) {
+        const ks = io.sockets.sockets.get(kicked.socketId);
+        if (ks) ks.emit('kicked', { reason: '你被房主踢出了观战席' });
+      }
       broadcastRoom(room);
-      return;
     }
   });
 
@@ -904,20 +955,18 @@ io.on('connection', (socket) => {
     const room = currentRoom;
     if (!room || room.status !== 'waiting') return;
     const idx = room.players.findIndex(p => p.id === currentPlayerId);
-    if (idx >= 0) {
-      const p = room.players.splice(idx, 1)[0];
-      const spId = 'sp_' + Date.now();
-      const sp = { id: spId, name: p.name, socketId: socket.id };
-      while (room.spectators.length < 5) room.spectators.push(null);
-      const insertAt = Math.min(Math.max(index ?? 4, 0), 4);
-      let pos = insertAt;
-      while (pos < 5 && room.spectators[pos]) pos++;
-      if (pos >= 5) return;
-      room.spectators[pos] = sp;
-      addLog(room, `${p.name} 进入观战席`);
-      currentPlayerId = spId;
-      broadcastRoom(room);
-    }
+    if (idx < 0) return;
+    while (room.spectators.length < 5) room.spectators.push(null);
+    // 先找到空位再移除玩家，避免观战席已满时玩家凭空消失
+    let pos = Math.min(Math.max(index ?? 4, 0), 4);
+    while (pos < 5 && room.spectators[pos]) pos++;
+    if (pos >= 5) { socket.emit('errorMsg', '观战席已满'); return; }
+    const p = room.players.splice(idx, 1)[0];
+    const spId = 'sp_' + Date.now();
+    room.spectators[pos] = { id: spId, name: p.name, socketId: socket.id };
+    addLog(room, `${p.name} 进入观战席`);
+    currentPlayerId = spId;
+    broadcastRoom(room);
   });
 
   // 观战席换位：点击别人头像 → 对方确认后交换位置
@@ -950,6 +999,8 @@ io.on('connection', (socket) => {
     const fromIdx = (room.spectators || []).findIndex(s => s && s.id === fromId);
     const toIdx = (room.spectators || []).findIndex(s => s && s.id === toId);
     if (fromIdx < 0 || toIdx < 0) return;
+    // 只有被请求的一方可以同意/拒绝
+    if (room.spectators[toIdx].socketId !== socket.id) return;
     if (!accept) {
       addLog(room, `${room.spectators[toIdx].name} 拒绝了换位`);
       socket.emit('swapRequestResult', { accepted: false });
@@ -969,26 +1020,30 @@ io.on('connection', (socket) => {
 
   socket.on('pauseGame', () => {
     const room = currentRoom;
-    if (!room || room.status !== 'playing') return;
-    const p = room.players.find(p => p.id === currentPlayerId);
-    if (p) {
-      room.paused = true;
-      room.pausedBy = p.name;
-      // 清掉所有挂起的异步状态，resume 后重新建立
-      room.aiTurnPending = false;
-      room.grabAvailable = null;
-      room.wildPending = false;
-      addLog(room, `${p.name} 暂停了游戏`);
-      broadcastRoom(room);
-    }
+    if (!room || room.status !== 'playing' || room.paused) return;
+    const me = room.players.find(p => p.id === currentPlayerId);
+    if (!me) return;
+    // 只有房主或当前该出牌的玩家能暂停，避免多人乱点
+    if (socket.id !== room.ownerSocketId && room.players[room.currentIndex]?.id !== currentPlayerId) return;
+    room.paused = true;
+    room.pausedBy = me.name;
+    // 清掉挂起的异步调度与抢牌窗口，恢复后重新建立
+    // 注意：wildPending 是"等待选色"状态，不能清，否则这一手会卡死
+    room.aiTurnPending = false;
+    room.grabAvailable = null;
+    addLog(room, `${me.name} 暂停了游戏`);
+    broadcastRoom(room);
   });
 
   socket.on('resumeGame', () => {
     const room = currentRoom;
-    if (!room) return;
+    if (!room || !room.paused) return;
+    // 只有暂停的人或房主可以恢复
+    const me = room.players.find(p => p.id === currentPlayerId);
+    if (!me || (room.pausedBy !== me.name && socket.id !== room.ownerSocketId)) return;
     room.paused = false;
     room.pausedBy = null;
-    room.aiTurnPending = false;  // ✅ 解锁 AI 调度
+    room.aiTurnPending = false;
     addLog(room, '游戏继续');
     broadcastRoom(room);
     scheduleIfAuto(room);
@@ -1000,19 +1055,22 @@ io.on('connection', (socket) => {
     const idx = room.players.findIndex(p => p.id === currentPlayerId);
     if (idx >= 0) {
       const p = room.players[idx];
+      const wasCurrent = room.status === 'playing' && room.currentIndex === idx;
       room.players.splice(idx, 1);
       addLog(room, `${p.name} 退出房间`);
       // ✅ 如果退出的是房主 → 转移房主，不给 AI
-      if (socket.id === room.ownerSocketId) {
-        let nextOwner = room.players.find(x => !x.isAI && !x.offline && x.socketId);
-        if (!nextOwner) nextOwner = room.players.find(x => !x.isAI);
-        if (!nextOwner) nextOwner = (room.spectators || []).find(s => s && s.socketId);
-        if (nextOwner) {
-          room.ownerSocketId = nextOwner.socketId;
-          addLog(room, `房主转移给 ${nextOwner.name}`);
-        } else {
-          room.ownerSocketId = null;
-          addLog(room, '房主离开，暂无可接管的玩家');
+      if (socket.id === room.ownerSocketId) transferOwner(room, socket.id);
+      if (room.players.length > 0) {
+        // 修正轮次指针，避免退出后 currentIndex 越界/跳人
+        if (idx < room.currentIndex) room.currentIndex -= 1;
+        const n = room.players.length;
+        room.currentIndex = ((room.currentIndex % n) + n) % n;
+        if (wasCurrent) {
+          room.justDrew = false;
+          room.aiTurnPending = false;
+          room.grabAvailable = null;
+          room.wildPending = false;
+          room.pendingReport = null;
         }
       }
     }
@@ -1021,9 +1079,13 @@ io.on('connection', (socket) => {
       const s = room.spectators[specIdx];
       room.spectators[specIdx] = null;
       addLog(room, `${s.name} 退出观战席`);
+      if (socket.id === room.ownerSocketId) transferOwner(room, socket.id);
     }
     if (room.players.length === 0) rooms.delete(room.code);
-    broadcastRoom(room);
+    else {
+      broadcastRoom(room);
+      scheduleIfAuto(room, 800);
+    }
     currentRoom = null;
     currentPlayerId = null;
   });
@@ -1037,25 +1099,31 @@ io.on('connection', (socket) => {
   });
 
   socket.on('callUno', () => {
-    if (currentRoom && currentPlayerId) {
-      currentRoom.unoCalled[currentPlayerId] = !currentRoom.unoCalled[currentPlayerId];
-      if (currentRoom.pendingReport && currentRoom.pendingReport.playerId === currentPlayerId) {
-        currentRoom.pendingReport = null;
-      }
-      broadcastRoom(currentRoom);
+    const room = currentRoom;
+    if (!room || room.status !== 'playing' || !currentPlayerId) return;
+    const me = room.players.find(p => p.id === currentPlayerId);
+    // 只有手牌 ≤2 张时喊"有岁"才有意义，防止乱点刷状态
+    if (!me || me.hand.length > 2) return;
+    room.unoCalled[currentPlayerId] = !room.unoCalled[currentPlayerId];
+    if (room.pendingReport && room.pendingReport.playerId === currentPlayerId) {
+      room.pendingReport = null;
     }
+    broadcastRoom(room);
   });
 
   socket.on('reportUno', () => {
-    if (!currentRoom || !currentRoom.pendingReport || currentRoom.status !== 'playing') return;
-    const target = currentRoom.players.find(p => p.id === currentRoom.pendingReport.playerId);
+    const room = currentRoom;
+    if (!room || !room.pendingReport || room.status !== 'playing') return;
+    // 不能举报自己
+    if (room.pendingReport.playerId === currentPlayerId) return;
+    const target = room.players.find(p => p.id === room.pendingReport.playerId);
     if (target) {
-      const drawn = drawCards(currentRoom, 2);
+      const drawn = drawCards(room, 2);
       target.hand.push(...drawn);
-      addLog(currentRoom, `举报成功！${target.name} 被罚摸2张`);
+      addLog(room, `举报成功！${target.name} 被罚摸2张`);
     }
-    currentRoom.pendingReport = null;
-    broadcastRoom(currentRoom);
+    room.pendingReport = null;
+    broadcastRoom(room);
   });
 
   socket.on('chooseColor', ({ color }) => {
@@ -1099,18 +1167,15 @@ io.on('connection', (socket) => {
       p.aiProxy = room.status === 'playing' || room.status === 'grabbing';
       addLog(room, p.aiProxy ? `${p.name} 掉线，由 AI 代理` : `${p.name} 掉线，等待重连`);
 
-      // ✅ 房主掉线 → 转移房主，优先非 AI 在线玩家，兜底到非 AI 离线玩家或在线观战者
+      // ✅ 房主掉线 → 稍等 4 秒再转移（刷新页面能抢回来），期间重连则不转移
       if (isOwner) {
-        let nextOwner = room.players.find(x => !x.isAI && !x.offline && x.socketId);
-        if (!nextOwner) nextOwner = room.players.find(x => !x.isAI && x.socketId);
-        if (!nextOwner) nextOwner = (room.spectators || []).find(s => s && s.socketId && !s.isAI);
-        if (nextOwner) {
-          room.ownerSocketId = nextOwner.socketId;
-          addLog(room, `房主转移给 ${nextOwner.name}`);
-        } else {
-          room.ownerSocketId = null;
-          addLog(room, '房主掉线，暂无可接管的玩家');
-        }
+        const ownerSocketId = socket.id;
+        setTimeout(() => {
+          if (rooms.get(room.code) !== room) return;
+          if (room.players.some(x => x.socketId === ownerSocketId)) return;  // 已重连
+          transferOwner(room, ownerSocketId);
+          broadcastRoom(room);
+        }, 4000);
       }
 
       // ✅ 掉线清理状态，下家能继续
@@ -1130,7 +1195,8 @@ io.on('connection', (socket) => {
       // 若正好轮到掉线玩家，立即交给 AI 代理行动
       scheduleIfAuto(room, 800);
     } else if (specIdx >= 0) {
-      // 只有观战席被清理了，也要广播
+      // 掉线的是观战者：若他正好是房主，也要转移
+      if (isOwner) transferOwner(room, socket.id);
       broadcastRoom(room);
     }
   });
@@ -1148,6 +1214,17 @@ io.on('connection', (socket) => {
         addLog(room, `${p.name} 重连回来`);
         broadcastRoom(room);
         socket.emit('reconnected', publicRoomState(room, p));
+        return;
+      }
+      // 观战者刷新页面也要认领回自己的观战位，否则会变成新观众
+      const sp = (room.spectators || []).find(s => s && s.id === playerId);
+      if (sp) {
+        sp.socketId = socket.id;
+        currentRoom = room;
+        currentPlayerId = sp.id;
+        addLog(room, `${sp.name} 重连回来`);
+        broadcastRoom(room);
+        socket.emit('reconnected', publicRoomState(room, sp));
         return;
       }
     }

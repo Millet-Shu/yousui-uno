@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>有岁 UNO</title>
-<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 
@@ -77,27 +77,29 @@
 
     <div id="status-bar">
       <span id="status-text">准备中...</span>
-      <button id="btn-menu" class="btn-menu">☰</button>
-      <div id="menu-dropdown" class="menu-dropdown hidden">
-        <div class="menu-item">
-          <span>显示手牌数量</span>
-          <label class="switch">
-            <input type="checkbox" id="toggle-hand-count">
-            <span class="slider"></span>
-          </label>
-        </div>
-        <button id="btn-restart">重开游戏</button>
-        <button id="btn-pause">暂停游戏</button>
-        <button id="btn-endgame">结束游戏</button>
-        <button id="btn-leave-room">退出房间</button>
+    </div>
+
+    <!-- 右上角菜单 -->
+    <button id="btn-menu" class="btn-menu">☰</button>
+    <div id="menu-dropdown" class="menu-dropdown hidden">
+      <div class="menu-item">
+        <span>显示手牌数量</span>
+        <label class="switch">
+          <input type="checkbox" id="toggle-hand-count">
+          <span class="slider"></span>
+        </label>
       </div>
+      <button id="btn-restart">重开游戏</button>
+      <button id="btn-pause">暂停游戏</button>
+      <button id="btn-endgame">结束游戏</button>
+      <button id="btn-leave-room">退出房间</button>
     </div>
 
     <!-- 暂停遮罩 -->
     <div id="pause-overlay" class="pause-overlay hidden">
       <div class="pause-text">游戏暂停</div>
       <div id="pause-by" class="pause-by"></div>
-      <button id="btn-resume" class="hidden" style="margin-top:20px;padding:8px 24px;font-size:14px;border:none;border-radius:8px;background:#e04040;color:#fff;cursor:pointer;">取消暂停</button>
+      <button id="btn-resume" class="pause-resume hidden">取消暂停</button>
     </div>
 
     <!-- 确认弹窗 -->
@@ -114,17 +116,13 @@
     <!-- 日志 -->
     <div id="game-log"></div>
 
-    <!-- 有岁按钮（手牌上方） -->
-    <button id="btn-uno" class="btn-uno hidden">喊"有岁"</button>
-
-    <!-- 不出按钮 -->
-    <button id="btn-pass" class="btn-pass hidden">不出(摸1张)</button>
-
-    <!-- 跳过按钮（摸完牌后选择不打出） -->
-    <button id="btn-skip" class="btn-skip hidden">跳过回合</button>
-
-    <!-- 抢相同牌按钮 -->
-    <button id="btn-grab-card" class="btn-grab-card hidden">⚡ 抢相同的牌</button>
+    <!-- 底部操作按钮（统一样式，避免各自绝对定位重叠） -->
+    <div id="action-bar">
+      <button id="btn-uno" class="btn-uno hidden">喊"有岁"</button>
+      <button id="btn-grab-card" class="btn-grab-card hidden">⚡ 抢相同的牌</button>
+      <button id="btn-pass" class="btn-pass hidden">不出(摸1张)</button>
+      <button id="btn-skip" class="btn-skip hidden">跳过回合</button>
+    </div>
 
     <!-- 我的名次 -->
     <div id="my-rank" class="my-rank hidden"></div>
@@ -137,10 +135,10 @@
       <div class="modal-content">
         <h3>选择颜色</h3>
         <div class="color-buttons">
-          <button data-color="red" class="color-btn" style="background:#e04040">红</button>
-          <button data-color="yellow" class="color-btn" style="background:#e8d020">黄</button>
-          <button data-color="green" class="color-btn" style="background:#30b050">绿</button>
-          <button data-color="blue" class="color-btn" style="background:#3070d0">蓝</button>
+          <button data-color="red" class="color-btn red">红</button>
+          <button data-color="yellow" class="color-btn yellow">黄</button>
+          <button data-color="green" class="color-btn green">绿</button>
+          <button data-color="blue" class="color-btn blue">蓝</button>
         </div>
       </div>
     </div>
@@ -148,6 +146,6 @@
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="game.js?v=25"></script>
+<script src="game.js?v=27"></script>
 </body>
 </html>
