@@ -134,6 +134,8 @@ input:focus { border-color: #6c7bff; }
 .spectator-container { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 #game-room-code { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: bold; color: #ffd700; background: rgba(0,0,0,0.3); padding: 6px 16px; border-radius: 8px; z-index: 10; }
 .hand-card.selected { transform: translateY(-10px); box-shadow: 0 0 15px rgba(255,255,255,0.5); }
+.hand-card.grabbable { cursor: pointer; box-shadow: 0 0 10px 3px #ffd700; animation: grabPulse 0.8s infinite; transform: translateY(-6px); }
+@keyframes grabPulse { 50% { box-shadow: 0 0 18px 6px #ffd700; } }
 #game-spectators { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 8px; }
 #game-spectator-list { display: flex; flex-direction: column; gap: 8px; }
 .game-spectator-item { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.1); padding: 6px 10px; border-radius: 8px; }

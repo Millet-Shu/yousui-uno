@@ -168,7 +168,12 @@ function publicRoomState(room, selfPlayer) {
     maxPlayers: room.maxPlayers,
     justDrew: !!room.justDrew,
     isOwner: selfPlayer && selfPlayer.socketId === room.ownerSocketId,
-    grabAvailable: room.grabAvailable && room.grabAvailable.playerId === selfId ? room.grabAvailable : null,
+    grabAvailable: (() => {
+      if (!room.grabAvailable || !selfId) return null;
+      const me = room.grabAvailable.candidates.find(c => c.playerId === selfId);
+      if (!me) return null;
+      return { card: room.grabAvailable.card, playedBy: room.grabAvailable.playedBy, cardIndex: me.cardIndex };
+    })(),
     spectators: (room.spectators || []).slice(0, 5).map(s => s ? { name: s.name, isYou: s.id === selfId, isOwner: s.socketId === room.ownerSocketId } : null),
     log: room.log.slice(-20)
   };
@@ -223,6 +228,7 @@ function startGame(room) {
   room.wildPending = false;
   room.justDrew = false;        // ✅ 清零
   room.aiTurnPending = false;
+  room.grabAvailable = null;    // ✅ 重开时清理抢牌窗口
   room.log = [];
 
   addLog(room, `游戏开始！抢"有岁"先手！`);
@@ -377,27 +383,39 @@ function handleCardEffect(room, player, card, chosenColor) {
 
   if (room.wildPending) { broadcastRoom(room); return; }
 
-  // 检查谁可以抢牌：手上有和刚打出的牌完全一样的牌
+  // 检查谁可以抢牌：手上有和刚打出的牌完全一样的牌（包括刚打出的人自己，可以连出）
   room.grabAvailable = null;
   const lastCard = room.topCard;
+  const candidates = [];
   for (const p of room.players) {
-    if (p.id === player.id) continue;  // 排除刚打出的玩家
-    if (p.finished) continue;  // 排除已经打完的
-    const hasSame = p.hand.findIndex(c => 
+    if (p.finished) continue;  // 只排除已经打完的
+    const idx = p.hand.findIndex(c =>
       c.color === lastCard.color && c.type === lastCard.type && c.value === lastCard.value
     );
-    if (hasSame >= 0) {
-      room.grabAvailable = { card: lastCard, playedBy: player.name, cardIndex: hasSame, playerId: p.id };
-      // AI自动抢牌
-      if (p.isAI) {
+    if (idx >= 0) candidates.push({ playerId: p.id, cardIndex: idx });
+  }
+  if (candidates.length > 0) {
+    room.grabAvailable = { card: lastCard, playedBy: player.name, candidates };
+    // AI 自动抢牌
+    for (const cand of candidates) {
+      const p = room.players.find(x => x.id === cand.playerId);
+      if (p && p.isAI) {
         setTimeout(() => {
-          if (room.grabAvailable && room.grabAvailable.playerId === p.id) {
+          if (room.grabAvailable && room.grabAvailable.candidates.some(c => c.playerId === p.id)) {
             grabCard(room, p.id);
           }
-        }, 800 + Math.random() * 800);
+        }, 700 + Math.random() * 900);
       }
-      break;  // 先只让第一个可以抢的人抢
     }
+    // 抢牌窗口 3 秒超时自动关闭，防止没人抢时卡住游戏
+    setTimeout(() => {
+      if (room.grabAvailable && room.grabAvailable.candidates === candidates) {
+        room.grabAvailable = null;
+        broadcastRoom(room);
+        const cur = room.players[room.currentIndex];
+        if (cur && cur.isAI && room.status === 'playing' && !room.paused) scheduleAiTurn(room);
+      }
+    }, 3000);
   }
 
   broadcastRoom(room);
@@ -444,6 +462,7 @@ function drawCard(room, playerId) {
   const player = room.players[room.currentIndex];
   if (!player || player.id !== playerId) return;
   if (room.wildPending) return;
+  room.grabAvailable = null;  // 当前玩家已行动，抢牌窗口关闭
 
   // 有罚牌要摸
   if (room.pendingDraw > 0) {
@@ -490,36 +509,57 @@ function advance(room) {
   room.justDrew = false;
 }
 
-// 抢牌功能
+// 抢牌功能：任何人（包括刚打出的人自己）抢出与顶牌完全相同的牌
+// 中间的人全部被跳过，轮到抢牌者的下一家行动
 function grabCard(room, playerId) {
+  if (room.status !== 'playing' || room.paused) return;
   if (!room.grabAvailable) return;
-  if (room.grabAvailable.playerId !== playerId) return;
-  
+  const cand = room.grabAvailable.candidates.find(c => c.playerId === playerId);
+  if (!cand) return;
+
   const grabberIdx = room.players.findIndex(p => p.id === playerId);
   const grabber = room.players[grabberIdx];
   if (!grabber || grabber.finished) return;
-  
-  const cardIndex = room.grabAvailable.cardIndex;
-  const card = grabber.hand[cardIndex];
-  if (!card) return;
-  
-  addLog(room, `⚡ ${grabber.name} 抢牌！`);
-  
-  // 从手上移除那张牌
-  grabber.hand.splice(cardIndex, 1);
+
+  // 校验那张牌仍在手上且与顶牌完全相同（防止状态变化后错抢）
+  const card = grabber.hand[cand.cardIndex];
+  const lastCard = room.grabAvailable.card;
+  if (!card || card.color !== lastCard.color || card.type !== lastCard.type || card.value !== lastCard.value) return;
+
+  addLog(room, `⚡ ${grabber.name} 抢出了 ${cardName(card)}！`);
+
+  // UNO 喊牌逻辑与 playCard 保持一致
+  const myUnoCalled = !!room.unoCalled[grabber.id];
+  for (const pid in room.unoCalled) {
+    room.unoCalled[pid] = false;
+  }
+
+  grabber.hand.splice(cand.cardIndex, 1);
   room.discardPile.push(card);
   room.topCard = card;
-  
-  // 清空之前的叠加牌，重新计算
+  room.justDrew = false;
+
+  // 抢出后剩 1 张且没喊有岁 → 可被举报
+  if (grabber.hand.length === 1 && !myUnoCalled) {
+    room.pendingReport = { playerId: grabber.id, playerName: grabber.name };
+  } else {
+    room.pendingReport = null;
+  }
+  if (myUnoCalled && grabber.hand.length <= 1) {
+    addLog(room, `${grabber.name} 喊了"有岁"`);
+    room.unoCalled[grabber.id] = true;
+  }
+
+  // 抢出 +2/+4：之前累加的罚牌数清零，之后重新按这张牌累加为 2 或 4
   room.pendingDraw = 0;
   room.pendingDrawType = null;
-  
-  // 设置当前玩家为抢牌者
+
+  // 轮到抢牌者，由 handleCardEffect 从这里推进到抢牌者的下家
   room.currentIndex = grabberIdx;
   room.grabAvailable = null;
-  
-  // 重新处理牌效
-  handleCardEffect(room, grabber, card, card.color === 'none' ? 'red' : null);
+
+  // 重新处理牌效；万能牌让抢牌者自己选颜色（wildPending 流程）
+  handleCardEffect(room, grabber, card, null);
 }
 
 function checkWin(room) {
@@ -723,6 +763,7 @@ io.on('connection', (socket) => {
     room.unoCalled = {};
     room.justDrew = false;
     room.aiTurnPending = false;
+    room.grabAvailable = null;
     addLog(room, '回到房间等待区');
     broadcastRoom(room);
   });
@@ -897,6 +938,7 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'playing' || !room.justDrew) return;
     const player = room.players[room.currentIndex];
     if (!player || player.id !== currentPlayerId) return;
+    room.grabAvailable = null;  // 当前玩家已行动，抢牌窗口关闭
     room.justDrew = false;
     advance(room);
     broadcastRoom(room);

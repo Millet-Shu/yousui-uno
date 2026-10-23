@@ -252,22 +252,36 @@ function renderGame(state) {
   // 对手
   const oppEl = $('opponents');
   oppEl.innerHTML = '';
-  const opponents = state.players.filter(p => !p.isYou);
-  const n = opponents.length;
+  const players = state.players;
+  const total = players.length;
+  const meIdx = Math.max(players.findIndex(p => p.isYou), 0);
 
-  // 对手位置：从我（底部）开始，顺时针方向排列，AI编号依次变大
-  const positions = [
-    { x: 85, y: 68 },  // 1号：右下（东南）
-    { x: 85, y: 45 },  // 2号：右中（东）
-    { x: 85, y: 22 },  // 3号：右上（东北）
-    { x: 50, y: 20 },  // 4号：顶中（北）
-    { x: 15, y: 22 },  // 5号：左上（西北）
-    { x: 15, y: 45 },  // 6号：左中（西）
-    { x: 15, y: 68 },  // 7号：左下（西南）
+  // 座位：以"我"为南位（底部），从我的下家开始沿出牌顺序逆时针排列
+  // ≤4人：标准东南西北大方位（东=我右侧 → 北=对面 → 西=我左侧）
+  // >4人：紧凑环绕布局
+  const seatPositions = total <= 4 ? [
+    { x: 85, y: 50 },  // 东（我的右侧，逆时针下一位）
+    { x: 50, y: 20 },  // 北（对面）
+    { x: 15, y: 50 },  // 西（我的左侧）
+  ] : [
+    { x: 85, y: 68 },  // 东南
+    { x: 85, y: 45 },  // 东
+    { x: 85, y: 22 },  // 东北
+    { x: 50, y: 20 },  // 北
+    { x: 15, y: 22 },  // 西北
+    { x: 15, y: 45 },  // 西
+    { x: 15, y: 68 },  // 西南
   ];
 
-  opponents.forEach((p, i) => {
-    const pos = positions[i % positions.length];
+  // 按出牌顺序（direction=1 时沿数组递增，视觉逆时针）从我的下家开始排座
+  const ordered = [];
+  for (let k = 1; k <= total && ordered.length < total - 1; k++) {
+    const p = players[(meIdx + k) % total];
+    if (p && !p.isYou) ordered.push(p);
+  }
+
+  ordered.forEach((p, i) => {
+    const pos = seatPositions[i % seatPositions.length];
     const div = document.createElement('div');
     div.className = 'opponent ' + (p.isCurrent ? ' current' : '');
     div.style.left = pos.x + '%';
@@ -310,6 +324,8 @@ function renderGame(state) {
     $('status-text').textContent = '轮到你出牌！';
   } else if (state.pendingDraw > 0) {
     $('status-text').textContent = `${escapeHtml(state.currentPlayerName)} 面临 +${state.pendingDraw} 罚牌...`;
+  } else if (state.grabAvailable) {
+    $('status-text').textContent = `⚡ ${escapeHtml(state.grabAvailable.playedBy)} 刚打出 ${cardText(state.grabAvailable.card)}，你可以抢出相同的牌！`;
   } else {
     $('status-text').textContent = `等待 ${escapeHtml(state.currentPlayerName)} 出牌...`;
   }
@@ -356,9 +372,8 @@ function renderGame(state) {
   $('btn-restart').classList.toggle('hidden', !state.isOwner);
   $('btn-endgame').classList.toggle('hidden', !state.isOwner);
 
-  // 抢牌按钮：当前玩家可以抢牌时显示
-  const canGrab = state.grabAvailable && state.grabAvailable.playerId === myPlayerId;
-  $('btn-grab-card').classList.toggle('hidden', !canGrab);
+  // 抢牌按钮：我可以抢牌时显示（服务器已按候选人过滤）
+  $('btn-grab-card').classList.toggle('hidden', !state.grabAvailable);
 
   const myTurn2 = state.players.find(p => p.isYou && p.isCurrent);
   if (myTurn2 && state.status === 'playing' && !state.wildPending && state.pendingDraw > 0) {
@@ -418,10 +433,18 @@ function renderGame(state) {
     if (playable && state.pendingDraw > 0) {
       playable = (card.type === 3 || card.type === 5);
     }
+    // 可抢牌：手上有和刚打出的牌完全一样的牌（包括自己刚打出的，可连出）
+    const canGrabCard = !myTurn && state.status === 'playing' && state.grabAvailable &&
+      card.color === state.grabAvailable.card.color &&
+      card.type === state.grabAvailable.card.type &&
+      card.value === state.grabAvailable.card.value;
     div.className = 'hand-card ' + (card.color || 'none');
     div.textContent = cardText(card);
 
-    if (playable) {
+    if (canGrabCard) {
+      div.classList.add('grabbable');
+      div.onclick = () => socket.emit('grabCard');
+    } else if (playable) {
       div.onclick = () => {
         // 使用 originalIndex，绝不会错
         if (div.classList.contains('selected')) {
