@@ -136,6 +136,9 @@ socket.on('reconnected', (state) => {
 socket.on('reconnectFailed', () => {
   localStorage.removeItem('uno_playerId');
   localStorage.removeItem('uno_roomCode');
+  myPlayerId = null;
+  myRoomCode = null;
+  $('home-error').textContent = '原来的房间已结束，请重新创建或加入';
   showScreen('home');
 });
 
