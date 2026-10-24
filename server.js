@@ -108,6 +108,7 @@ function createRoom(maxPlayers = 4) {
     pendingDraw: 0,
     pendingDrawType: null,       // ✅ 之前没初始化
     status: 'waiting',
+    mode: null,                  // 游戏模式：normal=正常版，yousui=有岁版；开局前由房主选择
     wildPending: false,
     unoCalled: {},
     pendingReport: null,
@@ -140,6 +141,7 @@ function publicRoomState(room, selfPlayer) {
   return {
     code: room.code,
     status: room.status,
+    mode: room.mode || null,
     players: room.players.map(p => ({
       id: p.id,
       name: p.name,
@@ -254,7 +256,7 @@ function startGame(room) {
   room.unoCalled = {};
   room.log = [];
 
-  addLog(room, `游戏开始！抢"有岁"先手！`);
+  addLog(room, `【${room.mode === 'normal' ? '正常版 UNO' : '有岁 UNO'}】游戏开始！抢"有岁"先手！`);
   broadcastRoom(room);
 
   setTimeout(() => {
@@ -823,8 +825,19 @@ io.on('connection', (socket) => {
   socket.on('startGame', () => {
     const room = currentRoom;
     if (!room || room.status !== 'waiting' || !isRoomOwner(room, socket.id, currentPlayerId)) return;
+    if (!room.mode) { socket.emit('errorMsg', '请先选择游戏模式'); return; }
     if (room.players.length < 2) { socket.emit('errorMsg', '至少需要2人（可加AI）'); return; }
     startGame(room);
+  });
+
+  // 房主在开局前选择游戏模式（目前两种模式规则一致，仅作标签与展示）
+  socket.on('setMode', ({ mode } = {}) => {
+    const room = currentRoom;
+    if (!room || room.status !== 'waiting' || !isRoomOwner(room, socket.id, currentPlayerId)) return;
+    if (!['normal', 'yousui'].includes(mode)) return;
+    room.mode = mode;
+    addLog(room, `游戏模式设为 ${mode === 'normal' ? '正常版 UNO' : '有岁 UNO'}`);
+    broadcastRoom(room);
   });
 
   socket.on('restartGame', () => {

@@ -5,6 +5,7 @@ let myPlayerId = localStorage.getItem('uno_playerId') || null;
 let myRoomCode = localStorage.getItem('uno_roomCode') || null;
 let leftRoom = false;
 let showHandCount = false;  // 是否显示手牌数量（默认关闭）
+let roomMode = null;        // 当前房间已选模式：normal / yousui
 let currentGameState = null;
 
 // 刷新/断线重连：认领回原来的座位，避免服务端留下"AI 代理的幽灵玩家"
@@ -56,7 +57,11 @@ $('btn-leave').onclick = () => {
   showScreen('home');
 };
 $('btn-addai').onclick = () => socket.emit('addAI');
-$('btn-start').onclick = () => socket.emit('startGame');
+// 开始游戏：还没选模式时先弹模式卡片，选完回到房间再点一次开始
+$('btn-start').onclick = () => {
+  if (!roomMode) { openModePicker(); return; }
+  socket.emit('startGame');
+};
 $('btn-uno').onclick = () => socket.emit('callUno');
 $('btn-grab').onclick = () => socket.emit('grabLead');
 $('btn-skip').onclick = () => socket.emit('skipTurn');
@@ -101,6 +106,51 @@ $('btn-pause').onclick = () => {
   socket.emit('pauseGame');
 };
 $('btn-resume').onclick = () => socket.emit('resumeGame');
+
+// ===== 模式选择 =====
+// roomMode 已在文件顶部声明（let roomMode = null），由 roomUpdate 里 state.mode 赋值
+const MODE_NAMES = { normal: '正常版 UNO', yousui: '有岁 UNO' };
+const modeName = m => MODE_NAMES[m] || '未选择';
+
+function openModePicker() {
+  $('mode-picker').classList.remove('hidden');
+  document.querySelectorAll('.mode-card').forEach(c =>
+    c.classList.toggle('selected', c.dataset.mode === roomMode));
+}
+function closeModePicker() { $('mode-picker').classList.add('hidden'); }
+
+$('btn-change-mode').onclick = openModePicker;
+$('btn-mode-cancel').onclick = closeModePicker;
+
+// 卡片支持手指横滑 / 桌面拖拽 / 滚轮横向滚动；拖动超过阈值时不触发选中
+(() => {
+  const track = document.querySelector('.mode-track');
+  let down = false, dragged = false, startX = 0, startLeft = 0;
+  track.addEventListener('pointerdown', e => {
+    down = true; dragged = false; startX = e.clientX; startLeft = track.scrollLeft;
+  });
+  track.addEventListener('pointermove', e => {
+    if (!down) return;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 8) dragged = true;
+    if (dragged) track.scrollLeft = startLeft - dx;
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
+    track.addEventListener(ev, () => { down = false; }));
+  track.addEventListener('wheel', e => {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      track.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }
+  }, { passive: false });
+  track.addEventListener('click', e => {
+    if (dragged) return;   // 滑动时松手不误选
+    const card = e.target.closest('.mode-card');
+    if (!card) return;
+    socket.emit('setMode', { mode: card.dataset.mode });
+    closeModePicker();
+  });
+})();
 
 // ===== 服务器事件 =====
 socket.on('roomCreated', ({ code, playerId }) => {
@@ -188,6 +238,11 @@ function renderLobby(state) {
   $('lobby-code').textContent = state.code || '';
   $('btn-start').classList.toggle('hidden', !state.isOwner);
   $('btn-addai').classList.toggle('hidden', !state.isOwner);
+  // 模式：房主可更换，其他人只读
+  roomMode = state.mode || null;
+  $('lobby-mode-name').textContent = modeName(roomMode);
+  $('lobby-mode').classList.toggle('empty', !roomMode);
+  $('btn-change-mode').classList.toggle('hidden', !state.isOwner);
 
   const list = $('lobby-players');
   list.innerHTML = `<div class="section-title">玩家 <span class="count">${state.players.length}/${state.maxPlayers}</span></div>`;
@@ -318,6 +373,11 @@ function cardText(c) {
 
 function renderGame(state) {
   currentGameState = state;
+  // 游戏开始后收起模式选择器，并把模式显示在牌桌顶部
+  closeModePicker();
+  roomMode = state.mode || null;
+  $('game-mode-chip').textContent = modeName(roomMode);
+  $('game-mode-chip').classList.toggle('hidden', !roomMode);
 
   // 顶牌
   const top = state.topCard;

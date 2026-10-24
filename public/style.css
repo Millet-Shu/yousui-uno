@@ -186,6 +186,55 @@ input:focus { border-color: #6c7bff; }
   font-size: 9px; padding: 0 4px; margin: 0; white-space: nowrap; z-index: 2;
 }
 .lobby-players .player { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 6px; }
+
+/* ===== 房间模式 ===== */
+.lobby-mode { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 14px; font-size: 14px; }
+.lobby-mode-label { color: #8b93b0; }
+.lobby-mode-value { color: #ffd040; font-weight: 700; }
+.lobby-mode.empty .lobby-mode-value { color: #8b93b0; font-weight: 400; }
+#game-mode-chip {
+  position: absolute; top: 58px; right: 12px; z-index: 10;
+  font-size: 12px; color: #ffd040; background: rgba(0,0,0,0.35);
+  padding: 3px 12px; border-radius: 999px;
+}
+
+/* ===== 模式选择：大卡片横滑 ===== */
+.mode-picker {
+  position: fixed; inset: 0; z-index: 300;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  background: rgba(8, 12, 28, 0.94); backdrop-filter: blur(6px);
+  padding: 24px 0;
+}
+.mode-picker-title { font-size: 20px; font-weight: 700; }
+.mode-picker-hint { font-size: 12px; color: #8b93b0; }
+.mode-track {
+  display: flex; align-items: center; gap: 16px;
+  width: 100%; overflow-x: auto; scroll-snap-type: x mandatory;
+  padding: 8px max(8vw, calc(50vw - 130px));
+  scrollbar-width: none; -webkit-overflow-scrolling: touch; cursor: grab;
+}
+.mode-track::-webkit-scrollbar { display: none; }
+.mode-track:active { cursor: grabbing; }
+.mode-card {
+  flex: 0 0 auto;
+  width: min(70vw, 260px);
+  height: min(56vh, 340px);
+  scroll-snap-align: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  border: 3px solid rgba(255,255,255,0.25); border-radius: 18px;
+  color: #fff; cursor: pointer; text-align: center; font-family: inherit;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+  transition: transform .18s, box-shadow .18s, border-color .18s;
+}
+.mode-card:hover { transform: translateY(-4px); }
+.mode-card:active { transform: scale(.97); }
+.mode-card.selected { border-color: #ffd700; box-shadow: 0 0 0 3px rgba(255,215,0,0.35), 0 12px 30px rgba(0,0,0,0.5); }
+.mode-card.normal { background: linear-gradient(160deg, #4d7cf0, #2a3f9f 60%, #1b2a72); }
+.mode-card.yousui { background: linear-gradient(160deg, #f06a8a, #c02a55 60%, #7a1638); }
+.mode-card-tag { font-size: 12px; padding: 3px 12px; border-radius: 999px; background: rgba(255,255,255,0.22); }
+.mode-card-name { font-size: clamp(20px, 5.6vw, 28px); font-weight: 800; letter-spacing: 1px; }
+.mode-card-desc { font-size: 13px; line-height: 1.9; color: rgba(255,255,255,0.88); }
+.mode-cancel { flex: 0 0 auto; max-width: 140px; }
 #game-room-code { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: bold; color: #ffd700; background: rgba(0,0,0,0.3); padding: 6px 16px; border-radius: 8px; z-index: 10; }
 .hand-card.selected { transform: translateY(-10px); box-shadow: 0 0 15px rgba(255,255,255,0.5); z-index: 2; }
 .hand-card.grabbable { cursor: pointer; box-shadow: 0 0 10px 3px #ffd700; animation: grabPulse 0.8s infinite; transform: translateY(-6px); z-index: 2; }

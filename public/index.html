@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>有岁 UNO</title>
-<link rel="stylesheet" href="style.css?v=20">
+<link rel="stylesheet" href="style.css?v=21">
 </head>
 <body>
 
@@ -41,6 +41,11 @@
   <div class="panel">
     <h2>房间 <span id="lobby-code" class="code"></span></h2>
     <p class="hint">把房间码发给朋友，让他们加入</p>
+    <div id="lobby-mode" class="lobby-mode">
+      <span class="lobby-mode-label">模式</span>
+      <span id="lobby-mode-name" class="lobby-mode-value">未选择</span>
+      <button id="btn-change-mode" class="mini-btn hidden">更换</button>
+    </div>
     <div id="lobby-players" class="player-list"></div>
     <div id="lobby-spectators" class="player-list"></div>
     <div class="row">
@@ -56,6 +61,7 @@
   <div id="game-board">
     <!-- 左上角房间码 -->
     <div id="game-room-code">房间号：<span id="game-code">----</span></div>
+    <div id="game-mode-chip" class="game-mode-chip hidden"></div>
 
     <!-- 左侧观战席 -->
     <div id="game-spectators">
@@ -145,7 +151,26 @@
   </div>
 </div>
 
+<!-- 模式选择：大卡片横滑，点击确认 -->
+<div id="mode-picker" class="mode-picker hidden">
+  <div class="mode-picker-title">选择游戏模式</div>
+  <div class="mode-picker-hint">左右滑动查看，点击卡片确认</div>
+  <div class="mode-track">
+    <button class="mode-card normal" data-mode="normal">
+      <span class="mode-card-tag">经典</span>
+      <span class="mode-card-name">正常版 UNO</span>
+      <span class="mode-card-desc">官方规则<br>每人 7 张牌，按顺序出牌<br>先出完手牌者获胜</span>
+    </button>
+    <button class="mode-card yousui" data-mode="yousui">
+      <span class="mode-card-tag">特色</span>
+      <span class="mode-card-name">有岁 UNO</span>
+      <span class="mode-card-desc">抢先手 · 抢相同的牌<br>可抢走别人即将打出的同牌<br>互动更多、节奏更快</span>
+    </button>
+  </div>
+  <button id="btn-mode-cancel" class="btn ghost mode-cancel">取消</button>
+</div>
+
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="game.js?v=34"></script>
+<script src="game.js?v=35"></script>
 </body>
 </html>
