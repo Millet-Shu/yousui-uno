@@ -514,7 +514,7 @@ input:focus { border-color: #6c7bff; }
 
 /* ===== 官方 UNO 卡面（仅"正常版"启用，有岁版保留原简洁样式） ===== */
 /* 官方卡：白色卡片边 + 内嵌彩色牌面（参考实物牌） */
-.hand-card.official, .card.official { position: relative; overflow: hidden; background: #fff; }
+.hand-card.official, .card.official, #top-card.official { position: relative; overflow: hidden; background: #fff; }
 .hand-card.official.red,    .card.official.red    { --face: #c8282e; --body: linear-gradient(160deg, #e8453f, #bf1f28); }
 .hand-card.official.yellow, .card.official.yellow { --face: #c9a600; --body: linear-gradient(160deg, #f2d21c, #d0ad00); }
 .hand-card.official.green,  .card.official.green  { --face: #127a33; --body: linear-gradient(160deg, #38b95a, #127a33); }
@@ -589,6 +589,6 @@ input:focus { border-color: #6c7bff; }
 }
 .opp-card-back.official { position: relative; overflow: hidden; background: linear-gradient(160deg, #c81018, #8a0a12); }
 .opp-card-back.official::after {
-  content: ""; position: absolute; left: 14%; right: 14%; top: 20%; bottom: 20%;
+  content: ""; position: absolute; left: 28%; right: 28%; top: 24%; bottom: 24%;
   background: rgba(255,255,255,0.9); border-radius: 50%; transform: rotate(-20deg);
 }
