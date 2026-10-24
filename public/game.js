@@ -535,9 +535,11 @@ function renderGame(state) {
     $('status-text').textContent = `等待 ${escapeHtml(state.currentPlayerName)} 出牌...`;
   }
 
-  // 喊 UNO / 有岁：手牌 ≤2 张就显示（抢牌后剩 1 张、或刚出到 1 张都能补喊）
+  // 喊 UNO / 有岁：只在自己回合显示并可以点（抢牌窗口里抢完就剩 1 张时也可喊）
   const myHandCount = state.yourHand.length;
-  const canCallUno = myHandCount > 0 && myHandCount <= 2 && state.status === 'playing' && !state.paused;
+  const grabCall = !!state.grabAvailable && myHandCount === 2;
+  const canCallUno = myHandCount > 0 && myHandCount <= 2 && state.status === 'playing' && !state.paused
+    && (!!myTurn || grabCall);
   $('btn-uno').classList.toggle('hidden', !canCallUno);
   if (state.myUnoCalled) {
     $('btn-uno').textContent = `✓ ${unoWord()}（再点取消）`;
