@@ -135,6 +135,7 @@ function createRoom(maxPlayers = 4) {
     mode: null,                  // 游戏模式：normal=正常版，yousui=有岁版；开局前由房主选择
     wildPending: false,
     unoCalled: {},
+    unoBadge: null,              // 喊牌飘带：{ playerId, expire }，只在这一个回合内显示
     pendingReport: null,
     justDrew: false,             // ✅ 之前没初始化
     aiTurnPending: false,        // ✅ AI 去重保护
@@ -176,6 +177,7 @@ function publicRoomState(room, selfPlayer) {
       finished: !!p.finished,
       rank: p.rank || null,
       unoCalled: !!room.unoCalled[p.id],
+      unoAnnounced: !!(room.unoBadge && room.unoBadge.playerId === p.id),
       isOwner: p.id === room.ownerPlayerId,
       isYou: p.id === selfId,
       isCurrent: room.players[room.currentIndex] && room.players[room.currentIndex].id === p.id
@@ -279,6 +281,7 @@ function startGame(room) {
   room.pausedById = null;
   room.pendingReport = null;
   room.unoCalled = {};
+  room.unoBadge = null;
   room.log = [];
 
   addLog(room, `【${rules.label}】游戏开始！抢"${rules.unoWord}"先手！`);
@@ -369,6 +372,7 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   for (const pid in room.unoCalled) {
     room.unoCalled[pid] = false;
   }
+  room.unoBadge = null;   // 进入下一回合，喊牌飘带随之消失
 
   player.hand.splice(cardIndex, 1);
   room.discardPile.push(card);
@@ -651,6 +655,7 @@ function grabCard(room, playerId) {
   for (const pid in room.unoCalled) {
     room.unoCalled[pid] = false;
   }
+  room.unoBadge = null;   // 进入下一回合，喊牌飘带随之消失
 
   grabber.hand.splice(cand.cardIndex, 1);
   room.discardPile.push(card);
@@ -1188,6 +1193,16 @@ io.on('connection', (socket) => {
     // 只有手牌 ≤2 张时喊"有岁"才有意义，防止乱点刷状态
     if (!me || me.hand.length > 2) return;
     room.unoCalled[currentPlayerId] = !room.unoCalled[currentPlayerId];
+    // 飘带只在本回合显示：3.5 秒后自动消失，避免一直挂在头像上
+    if (room.unoCalled[currentPlayerId]) {
+      const badge = { playerId: currentPlayerId };
+      room.unoBadge = badge;
+      setTimeout(() => {
+        if (room.unoBadge === badge) { room.unoBadge = null; broadcastRoom(room); }
+      }, 3500);
+    } else if (room.unoBadge && room.unoBadge.playerId === currentPlayerId) {
+      room.unoBadge = null;
+    }
     if (room.pendingReport && room.pendingReport.playerId === currentPlayerId) {
       room.pendingReport = null;
     }

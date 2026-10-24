@@ -391,6 +391,9 @@ function cardText(c) {
 const isOfficialUI = () => roomMode === 'normal';
 const unoWord = () => (isOfficialUI() ? 'UNO' : '有岁');
 
+// 官方卡牌面上的符号（跳/转用图形，文字牌用数字；日志与状态栏仍用中文 T_LABEL）
+const FACE_SYM = { 1: '⊘', 2: '⇄' };
+
 // 官方卡面：白色椭圆 + 两角小标；万能牌为四色椭圆，+4 为四张小牌
 function faceHtml(card) {
   if (card.type === 4) {
@@ -401,7 +404,12 @@ function faceHtml(card) {
       '<i class="ca r"></i><i class="ca y"></i><i class="ca g"></i><i class="ca b"></i>' +
       '</span><span class="cf-tl">+4</span><span class="cf-br">+4</span></span>';
   }
-  const sym = card.type === 0 ? card.value : T_LABEL[card.type];
+  // +2：官方牌面是两张叠放的同色小牌
+  if (card.type === 3) {
+    return '<span class="cf"><span class="cf-two"><i></i><i></i></span>' +
+      '<span class="cf-tl">+2</span><span class="cf-br">+2</span></span>';
+  }
+  const sym = card.type === 0 ? card.value : (FACE_SYM[card.type] || T_LABEL[card.type]);
   return `<span class="cf"><span class="cf-oval">${sym}</span>` +
     `<span class="cf-tl">${sym}</span><span class="cf-br">${sym}</span></span>`;
 }
@@ -476,7 +484,7 @@ function renderGame(state) {
     div.style.transform = 'translate(-50%, -50%)';
     const penalty = (p.isCurrent && state.pendingDraw > 0) ? `<div class="penalty">+${state.pendingDraw}</div>` : '';
     const rankLabel = p.finished ? `<div class="rank">第 ${p.rank} 名</div>` : '';
-    const unoLabel = p.unoCalled ? `<div class="uno-called">📢 ${unoWord()}！</div>` : '';
+    const unoLabel = p.unoAnnounced ? `<div class="uno-called">📢 ${unoWord()}！</div>` : '';
     const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id && !p.isYou)
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
     let cardsHtml = '';
