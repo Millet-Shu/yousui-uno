@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>有岁 UNO</title>
-<link rel="stylesheet" href="style.css?v=27">
+<link rel="stylesheet" href="style.css?v=28">
 </head>
 <body>
 
@@ -74,7 +74,10 @@
 
     <!-- 顶牌区 -->
     <div id="center-area">
-      <div id="top-card" class="card"><span id="top-label">?</span></div>
+      <div id="top-card-wrap" class="top-card-wrap">
+        <div id="top-card" class="card"><span id="top-label">?</span></div>
+        <span class="wild-ring" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      </div>
       <div id="draw-pile" class="card back" title="摸牌"><span id="draw-count">0</span></div>
     </div>
 
@@ -171,6 +174,6 @@
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="game.js?v=40"></script>
+<script src="game.js?v=41"></script>
 </body>
 </html>

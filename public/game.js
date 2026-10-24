@@ -393,6 +393,8 @@ const unoWord = () => (isOfficialUI() ? 'UNO' : '有岁');
 
 // 官方卡牌面上的符号（跳/转用图形，文字牌用数字；日志与状态栏仍用中文 T_LABEL）
 const FACE_SYM = { 1: '⊘', 2: '⇄' };
+// 当前颜色对应的提示色（万能牌线框用）
+const COLOR_HEX = { red: '#ff5a52', yellow: '#ffd93d', green: '#57d76e', blue: '#54a6ff' };
 
 // 官方卡面：白色椭圆 + 两角小标；万能牌为四色椭圆，+4 为四张小牌
 function faceHtml(card) {
@@ -444,6 +446,14 @@ function renderGame(state) {
 
   // 顶牌
   paintTopCard($('top-card'), state.topCard, state.currentColor);
+
+  // 万能牌/加四牌：用当前颜色的动态线框围住顶牌，避免看不出选了什么颜色
+  const topIsWild = !!state.topCard && (state.topCard.type === 4 || state.topCard.type === 5);
+  const showRing = isOfficialUI() && topIsWild && !!state.currentColor && !state.wildPending;
+  $('top-card-wrap').classList.toggle('show-ring', showRing);
+  if (showRing) {
+    $('top-card-wrap').style.setProperty('--ring-color', COLOR_HEX[state.currentColor] || '#fff');
+  }
 
   // 对手
   const oppEl = $('opponents');
