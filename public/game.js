@@ -116,6 +116,19 @@ function openModePicker() {
   $('mode-picker').classList.remove('hidden');
   document.querySelectorAll('.mode-card').forEach(c =>
     c.classList.toggle('selected', c.dataset.mode === roomMode));
+  requestAnimationFrame(updateModeTrackFit);
+}
+
+// 两张卡片放得下就并排居中，手机放不下时才切换成可横滑布局
+function updateModeTrackFit() {
+  const track = document.querySelector('.mode-track');
+  if (!track) return;
+  const cards = track.querySelectorAll('.mode-card');
+  if (!cards.length) return;
+  const gap = parseFloat(getComputedStyle(track).gap) || 0;
+  let inner = 0;
+  cards.forEach((c, i) => { inner += c.getBoundingClientRect().width + (i ? gap : 0); });
+  track.classList.toggle('scrollable', inner + 32 > track.clientWidth + 1);
 }
 function closeModePicker() { $('mode-picker').classList.add('hidden'); }
 
@@ -665,6 +678,7 @@ window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
     if (currentGameState) renderGame(currentGameState);
+    if (!$('mode-picker').classList.contains('hidden')) updateModeTrackFit();
   }, 150);
 });
 
