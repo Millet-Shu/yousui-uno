@@ -390,6 +390,7 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   if (myUnoCalled && player.hand.length <= 1) {
     addLog(room, `${player.name} 喊了"${rulesOf(room).unoWord}"`);
     room.unoCalled[player.id] = true;
+    setUnoBadge(room, player.id);   // 飘带亮到下一个回合开始
   }
 
   handleCardEffect(room, player, card, chosenColor);
@@ -671,6 +672,7 @@ function grabCard(room, playerId) {
   if (myUnoCalled && grabber.hand.length <= 1) {
     addLog(room, `${grabber.name} 喊了"${rulesOf(room).unoWord}"`);
     room.unoCalled[grabber.id] = true;
+    setUnoBadge(room, grabber.id);   // 飘带亮到下一个回合开始
   }
 
   // 抢出 +2/+4：之前累加的罚牌数清零，之后重新按这张牌累加为 2 或 4
@@ -697,6 +699,16 @@ function setPendingReport(room, player) {
       broadcastRoom(room);
     }
   }, 5000);
+}
+
+// 喊牌飘带：显示"这一个回合"，下一回合（下一张牌打出）自动消失；10 秒兜底防挂
+function setUnoBadge(room, playerId) {
+  if (!playerId) return;
+  const badge = { playerId };
+  room.unoBadge = badge;
+  setTimeout(() => {
+    if (room.unoBadge === badge) { room.unoBadge = null; broadcastRoom(room); }
+  }, 10000);
 }
 
 function checkWin(room) {
@@ -1193,13 +1205,9 @@ io.on('connection', (socket) => {
     // 只有手牌 ≤2 张时喊"有岁"才有意义，防止乱点刷状态
     if (!me || me.hand.length > 2) return;
     room.unoCalled[currentPlayerId] = !room.unoCalled[currentPlayerId];
-    // 飘带只在本回合显示：3.5 秒后自动消失，避免一直挂在头像上
+    // 飘带只在当前回合显示：打出下一张牌（换回合）时消失，另有 10 秒兜底
     if (room.unoCalled[currentPlayerId]) {
-      const badge = { playerId: currentPlayerId };
-      room.unoBadge = badge;
-      setTimeout(() => {
-        if (room.unoBadge === badge) { room.unoBadge = null; broadcastRoom(room); }
-      }, 3500);
+      setUnoBadge(room, currentPlayerId);
     } else if (room.unoBadge && room.unoBadge.playerId === currentPlayerId) {
       room.unoBadge = null;
     }
