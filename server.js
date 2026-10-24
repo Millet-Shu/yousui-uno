@@ -479,6 +479,13 @@ function openGrabWindow(room, playedBy) {
     // 3 秒内没人抢就自动关闭，防止卡住游戏
     setTimeout(() => {
       if (room.grabAvailable && room.grabAvailable.candidates === candidates) {
+        // 窗口过期：抢牌候选人在窗口里"提前喊"的标记作废，避免带到之后的回合
+        for (const c of candidates) {
+          if (room.unoCalled[c.playerId]) {
+            room.unoCalled[c.playerId] = false;
+            if (room.unoBadge && room.unoBadge.playerId === c.playerId) room.unoBadge = null;
+          }
+        }
         room.grabAvailable = null;
         broadcastRoom(room);
         scheduleIfAuto(room);
@@ -727,6 +734,7 @@ function checkWin(room) {
     room.pendingReport = null;
     room.justDrew = false;
     room.wildPending = false;
+    room.unoBadge = null;   // 结束后不要再挂着喊牌飘带
     if (remaining.length === 1) {
       remaining[0].rank = room.players.filter(x => x.finished).length + 1;
       addLog(room, `🏆 ${remaining[0].name} 第 ${remaining[0].rank} 名！`);
