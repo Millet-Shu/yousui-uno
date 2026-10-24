@@ -582,12 +582,12 @@ input:focus { border-color: #6c7bff; }
   color: #c81018; font-weight: 900; font-style: italic; font-size: calc(var(--card-w) * 0.26); letter-spacing: 0.02em;
 }
 #draw-pile.official { background: linear-gradient(160deg, #c81018, #8a0a12); }
-#draw-pile.official #draw-count { position: relative; z-index: 2; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.7); font-size: calc(var(--card-h) * 0.26); font-weight: 700; }
+#draw-pile.official #draw-count { position: relative; z-index: 2; color: #c81018; text-shadow: none; font-size: calc(var(--card-h) * 0.26); font-weight: 700; }
 #draw-pile.official::after {
   content: ""; position: absolute; left: 14%; right: 14%; top: 20%; bottom: 20%;
   background: rgba(255,255,255,0.92); border-radius: 50%; transform: rotate(-20deg);
 }
-.opp-card-back.official { position: relative; overflow: hidden; background: linear-gradient(160deg, #c81018, #8a0a12); border: 2px solid #fff; }
+.opp-card-back.official { position: relative; overflow: hidden; background: linear-gradient(160deg, #c81018, #8a0a12); }
 .opp-card-back.official::after {
   content: ""; position: absolute; left: 14%; right: 14%; top: 20%; bottom: 20%;
   background: rgba(255,255,255,0.9); border-radius: 50%; transform: rotate(-20deg);
