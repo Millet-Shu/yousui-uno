@@ -43,6 +43,28 @@ function shuffle(arr, rng = Math.random) {
   return arr;
 }
 
+// ==================== 模式规则 ====================
+// 每个模式一份独立规则：以后"有岁"要加专属牌或改玩法，只改这里，主流程不用动
+const MODE_RULES = {
+  normal: {
+    label: '正常版 UNO',
+    buildDeck: () => createDeck(),
+    grabLead: true,       // 是否有"抢先手"阶段
+    grabExchange: true,   // 是否允许抢别人打出的相同牌
+  },
+  yousui: {
+    label: '有岁 UNO',
+    buildDeck: () => createDeck(),   // 有岁专属牌后续在这里额外 push
+    grabLead: true,
+    grabExchange: true,
+  },
+};
+
+// 取房间对应模式的规则；模式缺失时按正常版处理
+function rulesOf(room) {
+  return MODE_RULES[room && room.mode] || MODE_RULES.normal;
+}
+
 function isWild(c) { return c.type === T.WILD || c.type === T.WILD_DRAW_FOUR; }
 
 function isPlayable(c, topCard, currentColor, pendingDraw, pendingDrawType) {
@@ -223,8 +245,9 @@ function drawCards(room, n) {
 }
 
 function startGame(room) {
+  const rules = rulesOf(room);
   room.status = 'grabbing';
-  room.drawPile = shuffle(createDeck());
+  room.drawPile = shuffle(rules.buildDeck());
   room.discardPile = [];
   room.topCard = null;
 
@@ -256,8 +279,14 @@ function startGame(room) {
   room.unoCalled = {};
   room.log = [];
 
-  addLog(room, `【${room.mode === 'normal' ? '正常版 UNO' : '有岁 UNO'}】游戏开始！抢"有岁"先手！`);
+  addLog(room, `【${rules.label}】游戏开始！抢"有岁"先手！`);
   broadcastRoom(room);
+
+  // 没有"抢先手"阶段的模式，直接由第一位玩家先手
+  if (!rules.grabLead) {
+    grabLead(room, room.players[0].id);
+    return;
+  }
 
   setTimeout(() => {
     if (room.status !== 'grabbing') return;
@@ -409,6 +438,14 @@ function handleCardEffect(room, player, card, chosenColor) {
 // 打开抢牌窗口：手上有和顶牌完全相同的牌即可抢（含出牌者自己，可连出）
 function openGrabWindow(room, playedBy) {
   room.grabAvailable = null;
+
+  // 该模式不开放"抢相同的牌"时，直接结束本轮
+  if (!rulesOf(room).grabExchange) {
+    broadcastRoom(room);
+    scheduleIfAuto(room);
+    return;
+  }
+
   const lastCard = room.topCard;
   const candidates = [];
   for (const p of room.players) {
@@ -769,14 +806,12 @@ io.on('connection', (socket) => {
   let currentRoom = null;
   let currentPlayerId = null;
 
-  socket.on('createRoom', ({ name, maxPlayers, mode }) => {
+  socket.on('createRoom', ({ name, maxPlayers } = {}) => {
     name = (name || '').trim();
     if (!name) { socket.emit('errorMsg', '请输入名字'); return; }
     if (currentRoom) { socket.emit('errorMsg', '你已经在房间里了'); return; }
-    if (mode === 'yousui') { socket.emit('errorMsg', '有岁模式还在开发中，敬请期待！'); return; }
     maxPlayers = Math.min(Math.max(parseInt(maxPlayers) || 4, 2), 8);
     const room = createRoom(maxPlayers);
-    room.mode = mode || 'uno';
     const player = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id, isAI: false, hand: [] };
     room.players.push(player);
     room.ownerSocketId = socket.id;
@@ -1052,7 +1087,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('grabLead', () => {
-    if (currentRoom) grabLead(currentRoom, currentPlayerId);
+    const room = currentRoom;
+    if (!room || !rulesOf(room).grabLead) return;
+    grabLead(room, currentPlayerId);
   });
 
   socket.on('pauseGame', () => {

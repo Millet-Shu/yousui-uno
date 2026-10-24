@@ -19,6 +19,8 @@ const $ = id => document.getElementById(id);
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $('screen-' + name).classList.add('active');
+  // 离开房间页时收起模式选择层，避免被踢/退出后遮罩残留
+  if (name !== 'lobby') $('mode-picker').classList.add('hidden');
 }
 
 // ✅ XSS 防护：HTML 转义
@@ -160,7 +162,8 @@ $('btn-mode-cancel').onclick = closeModePicker;
     if (dragged) return;   // 滑动时松手不误选
     const card = e.target.closest('.mode-card');
     if (!card) return;
-    socket.emit('setMode', { mode: card.dataset.mode });
+    roomMode = card.dataset.mode;   // 先行更新，避免服务端回包前再点开始又弹窗
+    socket.emit('setMode', { mode: roomMode });
     closeModePicker();
   });
 })();
