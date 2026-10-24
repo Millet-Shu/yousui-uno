@@ -48,12 +48,14 @@ function shuffle(arr, rng = Math.random) {
 const MODE_RULES = {
   normal: {
     label: '正常版 UNO',
+    unoWord: 'UNO',       // 剩 1 张时要喊的词
     buildDeck: () => createDeck(),
     grabLead: true,       // 是否有"抢先手"阶段
     grabExchange: true,   // 是否允许抢别人打出的相同牌
   },
   yousui: {
     label: '有岁 UNO',
+    unoWord: '有岁',
     buildDeck: () => createDeck(),   // 有岁专属牌后续在这里额外 push
     grabLead: true,
     grabExchange: true,
@@ -279,7 +281,7 @@ function startGame(room) {
   room.unoCalled = {};
   room.log = [];
 
-  addLog(room, `【${rules.label}】游戏开始！抢"有岁"先手！`);
+  addLog(room, `【${rules.label}】游戏开始！抢"${rules.unoWord}"先手！`);
   broadcastRoom(room);
 
   // 没有"抢先手"阶段的模式，直接由第一位玩家先手
@@ -382,7 +384,7 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
 
   // ✅ 修复：UNO 必须打完剩 <=1 张才算数（之前错写成 <=2）
   if (myUnoCalled && player.hand.length <= 1) {
-    addLog(room, `${player.name} 喊了"有岁"`);
+    addLog(room, `${player.name} 喊了"${rulesOf(room).unoWord}"`);
     room.unoCalled[player.id] = true;
   }
 
@@ -466,7 +468,7 @@ function openGrabWindow(room, playedBy) {
           if (room.grabAvailable && room.grabAvailable.candidates.some(c => c.playerId === p.id)) {
             grabCard(room, p.id);
           }
-        }, 700 + Math.random() * 900);
+        }, 1000 + Math.random() * 900);
       }
     }
     // 3 秒内没人抢就自动关闭，防止卡住游戏
@@ -545,7 +547,11 @@ function isAutoPlayer(p) {
 }
 
 // 轮到某人时，若该玩家由 AI 行动则调度 AI 回合
-function scheduleIfAuto(room, delay = 1000) {
+// AI 出牌前的停顿：给人类玩家留出看清牌面的时间（太慢会拖节奏）
+const AI_DELAY = 1700;      // 常规出牌
+const AI_DELAY_EXTRA = 1400; // 选色/摸牌等紧随动作
+
+function scheduleIfAuto(room, delay = AI_DELAY) {
   const cur = room.players[room.currentIndex];
   if (room.status === 'playing' && !room.paused && isAutoPlayer(cur)) {
     scheduleAiTurn(room, delay);
@@ -658,7 +664,7 @@ function grabCard(room, playerId) {
     room.pendingReport = null;
   }
   if (myUnoCalled && grabber.hand.length <= 1) {
-    addLog(room, `${grabber.name} 喊了"有岁"`);
+    addLog(room, `${grabber.name} 喊了"${rulesOf(room).unoWord}"`);
     room.unoCalled[grabber.id] = true;
   }
 
@@ -673,7 +679,7 @@ function grabCard(room, playerId) {
   // 重新处理牌效；万能牌让抢牌者自己选颜色（wildPending 流程）
   handleCardEffect(room, grabber, card, null);
   // 抢到的是万能牌且抢牌者是 AI（含离线代理）时，需要立刻替它选色，否则会卡在选色
-  if (room.wildPending && isAutoPlayer(room.players[room.currentIndex])) scheduleIfAuto(room, 800);
+  if (room.wildPending && isAutoPlayer(room.players[room.currentIndex])) scheduleIfAuto(room, AI_DELAY_EXTRA);
 }
 
 // 设置举报窗口（5 秒后自动失效，避免过时的举报按钮一直挂着）
@@ -716,7 +722,7 @@ function colorName(c) {
 }
 
 // ✅ 统一调度 AI 回合，防止 setTimeout 堆叠
-function scheduleAiTurn(room, delay = 1000) {
+function scheduleAiTurn(room, delay = AI_DELAY) {
   if (room.aiTurnPending) return;
   room.aiTurnPending = true;
   setTimeout(() => {
@@ -738,7 +744,7 @@ function aiTurn(room) {
   if (room.pendingReport) {
     const target = room.players.find(p => p.id === room.pendingReport.playerId);
     if (target) {
-      addLog(room, `AI举报了 ${target.name} 没喊有岁！罚摸2张`);
+      addLog(room, `AI举报了 ${target.name} 没喊${rulesOf(room).unoWord}！罚摸2张`);
       target.hand.push(...drawCards(room, 2));
       room.pendingReport = null;
     }
@@ -1161,7 +1167,7 @@ io.on('connection', (socket) => {
     else {
       ensureOwner(room);   // 已定义于 L543：房主已离开且无人接管时兜底选人
       broadcastRoom(room);
-      scheduleIfAuto(room, 800);
+      scheduleIfAuto(room, AI_DELAY_EXTRA);
     }
     currentRoom = null;
     currentPlayerId = null;
@@ -1300,7 +1306,7 @@ io.on('connection', (socket) => {
 
       broadcastRoom(room);
       // 若正好轮到掉线玩家，立即交给 AI 代理行动
-      scheduleIfAuto(room, 800);
+      scheduleIfAuto(room, AI_DELAY_EXTRA);
     } else if (specIdx >= 0) {
       broadcastRoom(room);
     }

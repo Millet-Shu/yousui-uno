@@ -387,6 +387,42 @@ function cardText(c) {
   return T_LABEL[c.type];
 }
 
+// ===== 卡面风格：正常版用官方 UNO 卡面，有岁版保留原简洁样式 =====
+const isOfficialUI = () => roomMode === 'normal';
+const unoWord = () => (isOfficialUI() ? 'UNO' : '有岁');
+
+// 官方卡面：白色椭圆 + 两角小标；万能牌为四色椭圆，+4 为四张小牌
+function faceHtml(card) {
+  if (card.type === 4) {
+    return '<span class="cf"><span class="cf-oval cf-rainbow"></span></span>';
+  }
+  if (card.type === 5) {
+    return '<span class="cf"><span class="cf-four">' +
+      '<i class="ca r"></i><i class="ca y"></i><i class="ca g"></i><i class="ca b"></i>' +
+      '</span><span class="cf-tl">+4</span><span class="cf-br">+4</span></span>';
+  }
+  const sym = card.type === 0 ? card.value : T_LABEL[card.type];
+  return `<span class="cf"><span class="cf-oval">${sym}</span>` +
+    `<span class="cf-tl">${sym}</span><span class="cf-br">${sym}</span></span>`;
+}
+
+// 顶牌绘制：两种风格共用。官方模式下不用 #top-label，避免 innerHTML 覆盖后取不到元素
+function paintTopCard(el, card, currentColor) {
+  const official = isOfficialUI();
+  if (!card) {
+    el.className = 'card' + (official ? ' official' : '');
+    el.style.boxShadow = 'none';
+    el.innerHTML = '<span id="top-label">?</span>';
+    return;
+  }
+  el.className = 'card ' + (card.color === 'none' ? 'wild' : card.color) + (official ? ' official' : '');
+  el.style.boxShadow = (!official && card.color === 'none' && currentColor)
+    ? `0 0 0 4px var(--color-${currentColor})` : 'none';
+  if (official) { el.innerHTML = faceHtml(card); return; }
+  el.innerHTML = '<span id="top-label"></span>';
+  $('top-label').textContent = cardText(card);
+}
+
 function renderGame(state) {
   currentGameState = state;
   // 游戏开始后收起模式选择器，并把模式显示在牌桌顶部
@@ -394,25 +430,12 @@ function renderGame(state) {
   roomMode = state.mode || null;
   $('game-mode-chip').textContent = modeName(roomMode);
   $('game-mode-chip').classList.toggle('hidden', !roomMode);
+  // 摸牌堆牌背跟随模式切换风格
+  $('draw-pile').classList.toggle('official', isOfficialUI());
+  $('game-board').classList.toggle('official-ui', isOfficialUI());
 
   // 顶牌
-  const top = state.topCard;
-  const topEl = $('top-card');
-  if (top) {
-    if (top.color === 'none') {
-      topEl.className = 'card wild';
-      const c = state.currentColor;
-      topEl.style.boxShadow = c ? `0 0 0 4px var(--color-${c})` : 'none';
-    } else {
-      topEl.className = 'card ' + top.color;
-      topEl.style.boxShadow = 'none';
-    }
-    $('top-label').textContent = cardText(top);
-  } else {
-    topEl.className = 'card';
-    topEl.style.boxShadow = 'none';
-    $('top-label').textContent = '?';
-  }
+  paintTopCard($('top-card'), state.topCard, state.currentColor);
 
   // 对手
   const oppEl = $('opponents');
@@ -453,15 +476,16 @@ function renderGame(state) {
     div.style.transform = 'translate(-50%, -50%)';
     const penalty = (p.isCurrent && state.pendingDraw > 0) ? `<div class="penalty">+${state.pendingDraw}</div>` : '';
     const rankLabel = p.finished ? `<div class="rank">第 ${p.rank} 名</div>` : '';
-    const unoLabel = p.unoCalled ? `<div class="uno-called">📢 有岁！</div>` : '';
+    const unoLabel = p.unoCalled ? `<div class="uno-called">📢 ${unoWord()}！</div>` : '';
     const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id && !p.isYou)
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
     let cardsHtml = '';
     // 最多显示 11 张牌背，叠放间距由 CSS 控制（居中、不撑出面板）
     const maxStack = 11;
     const shown = Math.min(p.handCount, maxStack);
+    const backCls = isOfficialUI() ? 'opp-card-back official' : 'opp-card-back';
     for (let j = 0; j < shown; j++) {
-      cardsHtml += '<div class="opp-card-back"></div>';
+      cardsHtml += '<div class="' + backCls + '"></div>';
     }
     if (p.handCount > maxStack) cardsHtml += '<div class="opp-card-back overflow">+' + (p.handCount - maxStack) + '</div>';
     const countLabel = showHandCount ? `<div class="hand-count">${p.handCount}张</div>` : '';
@@ -478,7 +502,7 @@ function renderGame(state) {
   if (state.status === 'over') {
     $('status-text').textContent = '游戏结束！';
   } else if (state.status === 'grabbing') {
-    $('status-text').textContent = '抢"有岁"先手！点下面按钮！';
+    $('status-text').textContent = `抢"${unoWord()}"先手！点下面按钮！`;
   } else if (state.grabAvailable) {
     $('status-text').textContent = `⚡ ${escapeHtml(state.grabAvailable.playedBy)} 刚打出 ${cardText(state.grabAvailable.card)}，你可以抢相同的牌！`;
   } else if (state.wildPending && myTurn) {
@@ -493,14 +517,15 @@ function renderGame(state) {
     $('status-text').textContent = `等待 ${escapeHtml(state.currentPlayerName)} 出牌...`;
   }
 
-  // 有岁按钮
+  // 喊 UNO / 有岁：手牌 ≤2 张就显示（抢牌后剩 1 张、或刚出到 1 张都能补喊）
   const myHandCount = state.yourHand.length;
-  $('btn-uno').classList.toggle('hidden', !(myHandCount === 2 && myTurn && state.status === 'playing'));
+  const canCallUno = myHandCount > 0 && myHandCount <= 2 && state.status === 'playing' && !state.paused;
+  $('btn-uno').classList.toggle('hidden', !canCallUno);
   if (state.myUnoCalled) {
-    $('btn-uno').textContent = '✓ 有岁（再点取消）';
+    $('btn-uno').textContent = `✓ ${unoWord()}（再点取消）`;
     $('btn-uno').classList.add('called');
   } else {
-    $('btn-uno').textContent = '喊"有岁"';
+    $('btn-uno').textContent = `喊"${unoWord()}"`;
     $('btn-uno').classList.remove('called');
   }
 
@@ -615,8 +640,9 @@ function renderGame(state) {
       card.color === state.grabAvailable.card.color &&
       card.type === state.grabAvailable.card.type &&
       card.value === state.grabAvailable.card.value;
-    div.className = 'hand-card ' + (card.color || 'none');
-    div.textContent = cardText(card);
+    div.className = 'hand-card ' + (card.color || 'none') + (isOfficialUI() ? ' official' : '');
+    if (isOfficialUI()) div.innerHTML = faceHtml(card);
+    else div.textContent = cardText(card);
 
     if (canGrabCard) {
       div.classList.add('grabbable');

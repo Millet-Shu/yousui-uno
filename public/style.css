@@ -511,3 +511,70 @@ input:focus { border-color: #6c7bff; }
   /* 窄屏下操作栏会压到左侧日志，直接收起日志 */
   #game-log { display: none; }
 }
+
+/* ===== 官方 UNO 卡面（仅"正常版"启用，有岁版保留原简洁样式） ===== */
+.hand-card.official, #top-card.official { position: relative; overflow: hidden; }
+.hand-card.official.red,    #top-card.official.red    { --face: #d3222a; background: linear-gradient(160deg, #e04040, #b31d22); }
+.hand-card.official.yellow, #top-card.official.yellow { --face: #cfae00; background: linear-gradient(160deg, #f0d820, #cfae00); }
+.hand-card.official.green,  #top-card.official.green  { --face: #16843a; background: linear-gradient(160deg, #35b558, #16843a); }
+.hand-card.official.blue,   #top-card.official.blue   { --face: #1a53b0; background: linear-gradient(160deg, #3a7fe0, #1a4ea8); }
+.hand-card.official.none,   #top-card.official.none,
+.hand-card.official.wild,   #top-card.official.wild   { --face: #1a1a1a; background: linear-gradient(160deg, #2e2e2e, #0b0b0b); }
+
+.hand-card.official { font-size: calc(var(--card-w) * 0.52); }
+#top-card.official  { font-size: calc(var(--card-h) * 0.56); }
+
+.hand-card.official .cf, #top-card.official .cf {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: block;
+}
+/* 中央白色椭圆：官方卡最标志性的元素 */
+.hand-card.official .cf-oval, #top-card.official .cf-oval {
+  position: absolute; left: 9%; right: 9%; top: 16%; bottom: 16%;
+  background: #fff; border-radius: 50%; transform: rotate(-20deg);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--face); font-weight: 900; font-size: 1em; line-height: 1;
+}
+/* 万能牌：四色椭圆 */
+.hand-card.official .cf-rainbow, #top-card.official .cf-rainbow {
+  background: conic-gradient(from 45deg, #d3222a 0 25%, #e8c800 0 50%, #16843a 0 75%, #1a53b0 0);
+}
+/* 两角小标 */
+.hand-card.official .cf-tl, #top-card.official .cf-tl,
+.hand-card.official .cf-br, #top-card.official .cf-br {
+  position: absolute; font-size: 0.36em; font-weight: 800; line-height: 1;
+  color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+}
+.hand-card.official .cf-tl, #top-card.official .cf-tl { top: 5%; left: 8%; }
+.hand-card.official .cf-br, #top-card.official .cf-br { bottom: 5%; right: 8%; transform: rotate(180deg); }
+/* +4：四张小彩牌 */
+.hand-card.official .cf-four, #top-card.official .cf-four {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: block;
+}
+.hand-card.official .cf-four .ca, #top-card.official .cf-four .ca {
+  position: absolute; width: 24%; height: 30%; border-radius: 3px;
+  border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+}
+.hand-card.official .cf-four .r, #top-card.official .cf-four .r { left: 22%; top: 30%; background: #d3222a; transform: rotate(-12deg); }
+.hand-card.official .cf-four .y, #top-card.official .cf-four .y { left: 50%; top: 26%; background: #e8c800; transform: rotate(6deg); }
+.hand-card.official .cf-four .g, #top-card.official .cf-four .g { left: 24%; top: 48%; background: #16843a; transform: rotate(4deg); }
+.hand-card.official .cf-four .b, #top-card.official .cf-four .b { left: 52%; top: 46%; background: #1a53b0; transform: rotate(-8deg); }
+
+/* 官方牌背：红底 + 倾斜白椭圆 + UNO 字样 */
+.card.back.official { background: linear-gradient(160deg, #c81018, #8a0a12); }
+.card.back.official::after {
+  content: "UNO"; position: absolute; left: 12%; right: 12%; top: 18%; bottom: 18%;
+  background: #fff; border-radius: 50%; transform: rotate(-20deg);
+  display: flex; align-items: center; justify-content: center;
+  color: #c81018; font-weight: 900; font-style: italic; font-size: 0.6em; letter-spacing: 0.02em;
+}
+#draw-pile.official { background: linear-gradient(160deg, #c81018, #8a0a12); }
+#draw-pile.official #draw-count { position: relative; z-index: 2; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.7); }
+#draw-pile.official::after {
+  content: ""; position: absolute; left: 14%; right: 14%; top: 20%; bottom: 20%;
+  background: rgba(255,255,255,0.92); border-radius: 50%; transform: rotate(-20deg);
+}
+.opp-card-back.official { position: relative; overflow: hidden; background: linear-gradient(160deg, #c81018, #8a0a12); }
+.opp-card-back.official::after {
+  content: ""; position: absolute; left: 14%; right: 14%; top: 20%; bottom: 20%;
+  background: rgba(255,255,255,0.9); border-radius: 50%; transform: rotate(-20deg);
+}
