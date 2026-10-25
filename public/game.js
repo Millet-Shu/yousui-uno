@@ -116,6 +116,17 @@ $('btn-pause').onclick = () => {
   socket.emit('pauseGame');
 };
 $('btn-resume').onclick = () => socket.emit('resumeGame');
+// 暂停遮罩盖住了右上角菜单，这里给所有人一个退出通道
+$('btn-pause-leave').onclick = () => {
+  showConfirm('确定要退出房间吗？', () => {
+    socket.emit('leaveRoom');
+    localStorage.clear();
+    myPlayerId = null;
+    myRoomCode = null;
+    leftRoom = true;
+    showScreen('home');
+  });
+};
 
 // ===== 模式选择 =====
 // roomMode 已在文件顶部声明（let roomMode = null），由 roomUpdate 里 state.mode 赋值

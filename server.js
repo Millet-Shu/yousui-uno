@@ -156,6 +156,17 @@ function createRoom(maxPlayers = 4) {
   return rooms.get(code);
 }
 
+// 只剩 AI、且没有观战者时清理房间，避免房间越积越多（AI 不会自己退出）
+function dropRoomIfAiOnly(room) {
+  const hasHuman = room.players.some(p => !p.isAI);
+  const hasSpectator = (room.spectators || []).some(s => s);
+  if (!hasHuman && !hasSpectator) {
+    rooms.delete(room.code);
+    return true;
+  }
+  return false;
+}
+
 function broadcastRoom(room) {
   for (const p of room.players) {
     if (p.isAI || !p.socketId) continue;
@@ -1028,7 +1039,7 @@ io.on('connection', (socket) => {
         if (ks) ks.emit('kicked', { reason: `你被房主踢出了房间` });
       }
 
-      if (room.players.length === 0 && !(room.spectators || []).some(s => s)) { rooms.delete(room.code); return; }
+      if (dropRoomIfAiOnly(room)) return;
 
       // 被踢的人正好是暂停发起者时，清掉暂停状态，避免全场永久卡在暂停
       if (room.pausedById === kicked.id) {
@@ -1271,15 +1282,15 @@ io.on('connection', (socket) => {
       }
       if (isRoomOwner(room, socket.id, currentPlayerId)) transferOwner(room, room.ownerSocketId);
     }
-    const hasSpectator = (room.spectators || []).some(s => s);
-    // 还有观战者时不能删房，否则留在观战席上的人会被静默踢回首页
-    if (room.players.length === 0 && !hasSpectator) rooms.delete(room.code);
-    else {
-      ensureOwner(room);   // 已定义于 L543：房主已离开且无人接管时兜底选人
-      scheduleGrabLeadFallback(room);   // 抢先手阶段没人能点按钮时兜底开局
-      broadcastRoom(room);
-      scheduleIfAuto(room, AI_DELAY_EXTRA);
+    if (dropRoomIfAiOnly(room)) {
+      currentRoom = null;
+      currentPlayerId = null;
+      return;
     }
+    ensureOwner(room);   // 已定义于 L543：房主已离开且无人接管时兜底选人
+    scheduleGrabLeadFallback(room);   // 抢先手阶段没人能点按钮时兜底开局
+    broadcastRoom(room);
+    scheduleIfAuto(room, AI_DELAY_EXTRA);
     currentRoom = null;
     currentPlayerId = null;
   });

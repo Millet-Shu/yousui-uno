@@ -265,6 +265,9 @@ input:focus { border-color: #6c7bff; }
 .pause-by { font-size: 16px; color: #aaa; margin-top: 10px; }
 .pause-resume { margin-top: 20px; padding: 10px 30px; min-width: 120px; font-size: 16px; border: none; border-radius: 22px; background: linear-gradient(135deg, #e85555, #d03333); color: #fff; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.35); transition: transform .15s, filter .15s; }
 .pause-resume:hover { transform: translateY(-2px); filter: brightness(1.1); }
+/* 暂停遮罩挡住右上角菜单，所有人都要能从遮罩直接退出房间 */
+.pause-leave { margin-top: 12px; padding: 8px 22px; font-size: 14px; border: 1px solid rgba(255,255,255,.35); border-radius: 20px; background: rgba(255,255,255,.08); color: #ddd; cursor: pointer; }
+.pause-leave:hover { background: rgba(255,255,255,.18); color: #fff; }
 
 /* ===== 游戏页 ===== */
 #screen-game { display: none; }
