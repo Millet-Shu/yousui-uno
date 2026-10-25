@@ -16,6 +16,14 @@ socket.on('connect', () => {
 // DOM
 const $ = id => document.getElementById(id);
 
+// 手牌横向滚动位置：持续记录，避免连续两次刷新时读到 0 把视图拉回最左
+let handScrollLeft = 0;
+(() => {
+  const el = $('hand-area');
+  if (!el) return;
+  el.addEventListener('scroll', () => { handScrollLeft = el.scrollLeft; });
+})();
+
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $('screen-' + name).classList.add('active');
@@ -495,7 +503,7 @@ function renderGame(state) {
     const penalty = (p.isCurrent && state.pendingDraw > 0) ? `<div class="penalty">+${state.pendingDraw}</div>` : '';
     const rankLabel = p.finished ? `<div class="rank">第 ${p.rank} 名</div>` : '';
     const unoLabel = p.unoAnnounced ? `<div class="uno-called">📢 ${unoWord()}！</div>` : '';
-    const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id && !p.isYou)
+    const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id && !p.isYou && !isSpectator)
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
     let cardsHtml = '';
     // 最多显示 11 张牌背，叠放间距由 CSS 控制（居中、不撑出面板）
@@ -611,11 +619,11 @@ function renderGame(state) {
     const pauseText = pauseOverlay.querySelector('.pause-text');
     if (state.isPausedByYou) {
       pauseText.textContent = '你暂停了游戏';
-      $('btn-resume').classList.remove('hidden');
     } else {
       pauseText.textContent = '游戏暂停';
-      $('btn-resume').classList.add('hidden');
     }
+    // 暂停发起者离开/被踢后，房主也能恢复，避免全场卡死
+    $('btn-resume').classList.toggle('hidden', !(state.isPausedByYou || state.isOwner));
     $('pause-by').textContent = `${escapeHtml(state.pausedBy || '')} 暂停了游戏`;
   } else {
     pauseOverlay.classList.add('hidden');
@@ -627,7 +635,6 @@ function renderGame(state) {
 
   // ✅ 手牌：排序时带上 originalIndex，避免 indexOf 错位
   const handEl = $('hand-area');
-  const prevScroll = handEl.scrollLeft;  // 记住横向拖动位置，状态刷新时不要跳回最左
   handEl.innerHTML = '';
 
   // 观战者看不到手牌内容，只显示所有人的牌背
@@ -698,7 +705,7 @@ function renderGame(state) {
     const cardW = cards[0].getBoundingClientRect().width;
     const need = cards.length * cardW + (cards.length - 1) * gap + pad;
     handEl.classList.toggle('scrollable', need > handEl.clientWidth + 1);
-    handEl.scrollLeft = prevScroll;
+    handEl.scrollLeft = handScrollLeft;
   });
 }
 

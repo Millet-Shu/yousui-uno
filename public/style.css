@@ -487,10 +487,10 @@ input:focus { border-color: #6c7bff; }
   .opponent .name { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .opponent .hand-count { font-size: 11px; }
   .opponent .penalty { font-size: 11px; padding: 1px 7px; }
-  /* 手机端：操作栏按钮更紧凑，仍保持单行可换行、不重叠 */
+  /* 手机端：操作栏按钮更紧凑，三个按钮同时出现也保持单行、不压状态条 */
   #action-bar { gap: 6px; }
-  #action-bar button { padding: 8px 14px; font-size: 13px; border-radius: 18px; }
-  #action-bar .btn-grab-card { font-size: 13px; }
+  #action-bar button { padding: 8px 10px; font-size: 12px; border-radius: 18px; }
+  #action-bar .btn-grab-card { font-size: 12px; }
   #status-bar { font-size: 12px; padding: 6px 12px; }
   /* 手机端：底部留出浏览器工具栏与安全区高度，手牌整体上移 */
   #hand-area { bottom: calc(60px + env(safe-area-inset-bottom, 0px)); max-width: 100vw; padding: 18px 6px 6px; }
