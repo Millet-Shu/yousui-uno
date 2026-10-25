@@ -299,26 +299,41 @@ const SFX = (() => {
   }
   applyGain();
 
-  function noiseBurst(dur, freq, q, peak) {
+  // 噪声源：一次生成、反复复用
+  function getNoise(ctx) {
+    if (noiseBuf) return noiseBuf;
+    const len = Math.floor(ctx.sampleRate * 0.5);
+    noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    return noiseBuf;
+  }
+
+  // 噪声冲击：可指定滤波类型与（可选的）频率滑动，用来做"啪"和"抽屉滑动"
+  function noiseHit(dur, f0, q, peak, opts) {
     const ctx = AudioCore.ctx, bus = AudioCore.sfx;
     if (!ctx || !bus) return;
-    if (!noiseBuf) {
-      const len = Math.floor(ctx.sampleRate * 0.25);
-      noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
-      const d = noiseBuf.getChannelData(0);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
-    }
+    const o = opts || {};
+    const t = ctx.currentTime + (o.when || 0);
     const src = ctx.createBufferSource();
-    src.buffer = noiseBuf;
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q;
+    src.buffer = getNoise(ctx);
+    const flt = ctx.createBiquadFilter();
+    flt.type = o.type || 'bandpass';
+    flt.Q.value = q;
+    flt.frequency.setValueAtTime(f0, t);
+    if (o.to) flt.frequency.exponentialRampToValueAtTime(o.to, t + dur * (o.sweepEnd || 1));
     const g = ctx.createGain();
-    const t = ctx.currentTime;
-    g.gain.setValueAtTime(peak, t);
+    // 起音很短才像"实体撞击"，长起音会变成"呼"
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + (o.attack || 0.004));
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(bp); bp.connect(g); g.connect(bus);
-    src.start(t);
-    src.stop(t + dur + 0.02);
+    src.connect(flt); flt.connect(g); g.connect(bus);
+    src.start(t, 0, Math.min(dur + 0.05, 0.49));
+  }
+
+  // 兼容旧调用：固定频率的噪声
+  function noiseBurst(dur, freq, q, peak) {
+    noiseHit(dur, freq, q, peak);
   }
 
   function tone(freq, dur, peak, type, when, slideTo) {
@@ -356,13 +371,16 @@ const SFX = (() => {
       AudioCore.resume();
       applyGain();   // 首次创建音频上下文时总线音量还是 0，这里补上
       switch (name) {
-        case 'card':      // 出牌：纸牌滑出的沙沙声 + 轻点
-          noiseBurst(0.11, 2000, 0.9, 0.35);
-          tone(520, 0.06, 0.12, 'square', 0.01);
+        case 'card':
+          // 出牌："啪"——纸牌拍在桌上的瞬态 + 一点木头桌面的闷响
+          noiseHit(0.055, 3800, 0.7, 0.55, { type: 'highpass' });   // 高频"啪"的脆点
+          noiseHit(0.12, 1400, 1.2, 0.32);                          // 纸牌本体
+          tone(190, 0.05, 0.22, 'sine', 0, 110);                    // 桌面闷响
           break;
-        case 'draw':      // 摸牌：更闷的摩擦声
-          noiseBurst(0.16, 900, 0.7, 0.3);
-          tone(300, 0.12, 0.1, 'sine', 0.02, 420);
+        case 'draw':      // 摸牌：像拉开抽屉——低频摩擦滑过，末尾轻轻一磕
+          noiseHit(0.26, 480, 1.6, 0.3, { to: 1900, sweepEnd: 0.75 });
+          noiseHit(0.1, 900, 1.4, 0.16, { when: 0.2 });
+          tone(150, 0.07, 0.1, 'sine', 0.24, 105);
           break;
         case 'skip':      // 跳过：两个下行短音
           tone(440, 0.1, 0.16, 'triangle', 0);
