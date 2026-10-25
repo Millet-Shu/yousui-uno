@@ -3,14 +3,23 @@ const socket = io();
 
 let myPlayerId = localStorage.getItem('uno_playerId') || null;
 let myRoomCode = localStorage.getItem('uno_roomCode') || null;
+// 座位令牌：重连时证明这个座位是自己的，别人拿到公开的 playerId 也顶不了号
+let mySeatToken = localStorage.getItem('uno_seatToken') || '';
 let leftRoom = false;
 let showHandCount = false;  // 是否显示手牌数量（默认关闭）
 let roomMode = null;        // 当前房间已选模式：normal / yousui
 let currentGameState = null;
 
+// 保存服务端下发的座位凭证
+function saveSeat(playerId, code, seatToken) {
+  if (playerId) localStorage.setItem('uno_playerId', playerId);
+  if (code) localStorage.setItem('uno_roomCode', code);
+  if (seatToken) { mySeatToken = seatToken; localStorage.setItem('uno_seatToken', seatToken); }
+}
+
 // 刷新/断线重连：认领回原来的座位，避免服务端留下"AI 代理的幽灵玩家"
 socket.on('connect', () => {
-  if (myPlayerId && myRoomCode && !leftRoom) socket.emit('reconnect', { playerId: myPlayerId });
+  if (myPlayerId && myRoomCode && !leftRoom) socket.emit('reconnect', { playerId: myPlayerId, seatToken: mySeatToken });
 });
 
 // DOM
@@ -188,27 +197,24 @@ $('btn-mode-cancel').onclick = closeModePicker;
 })();
 
 // ===== 服务器事件 =====
-socket.on('roomCreated', ({ code, playerId }) => {
+socket.on('roomCreated', ({ code, playerId, seatToken }) => {
   myPlayerId = playerId;
   myRoomCode = code;
-  localStorage.setItem('uno_playerId', playerId);
-  localStorage.setItem('uno_roomCode', code);
+  saveSeat(playerId, code, seatToken);
   $('lobby-code').textContent = code;
   showScreen('lobby');
 });
 
-socket.on('roomJoined', ({ code, playerId }) => {
+socket.on('roomJoined', ({ code, playerId, seatToken }) => {
   myPlayerId = playerId;
   myRoomCode = code;
-  if (playerId) {
-    localStorage.setItem('uno_playerId', playerId);
-    localStorage.setItem('uno_roomCode', code);
-  }
+  saveSeat(playerId, code, seatToken);
   $('lobby-code').textContent = code;
   showScreen('lobby');
 });
 
 socket.on('reconnected', (state) => {
+  saveSeat(null, null, state.seatToken);   // 旧会话重连成功后补存令牌
   if (state.status === 'waiting') {
     renderLobby(state);
     showScreen('lobby');
@@ -221,8 +227,10 @@ socket.on('reconnected', (state) => {
 socket.on('reconnectFailed', () => {
   localStorage.removeItem('uno_playerId');
   localStorage.removeItem('uno_roomCode');
+  localStorage.removeItem('uno_seatToken');
   myPlayerId = null;
   myRoomCode = null;
+  mySeatToken = '';
   $('home-error').textContent = '原来的房间已结束，请重新创建或加入';
   showScreen('home');
 });

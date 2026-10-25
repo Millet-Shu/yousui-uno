@@ -109,6 +109,11 @@ function safeStr(v) {
   return typeof v === 'string' ? v : '';
 }
 
+// 座位令牌：重连时凭令牌认领座位，避免拿别人公开的 playerId 顶号
+function newSeatToken() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+}
+
 function genRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   let code;
@@ -899,14 +904,14 @@ io.on('connection', (socket) => {
     if (currentRoom) { socket.emit('errorMsg', '你已经在房间里了'); return; }
     maxPlayers = Math.min(Math.max(parseInt(maxPlayers) || 4, 2), 8);
     const room = createRoom(maxPlayers);
-    const player = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id, isAI: false, hand: [] };
+    const player = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id, isAI: false, hand: [], seatToken: newSeatToken() };
     room.players.push(player);
     room.ownerSocketId = socket.id;
     room.ownerPlayerId = player.id;
     currentRoom = room;
     currentPlayerId = player.id;
     console.log('创建房间:', room.code, 'maxPlayers:', room.maxPlayers, '房主:', player.name);
-    socket.emit('roomCreated', { code: room.code, playerId: player.id });
+    socket.emit('roomCreated', { code: room.code, playerId: player.id, seatToken: player.seatToken });
     broadcastRoom(room);
   });
 
@@ -923,24 +928,24 @@ io.on('connection', (socket) => {
       while (room.spectators.length < 5) room.spectators.push(null);
       const emptyIdx = room.spectators.findIndex(s => !s);
       if (emptyIdx < 0) { socket.emit('errorMsg', '观战席已满'); return; }
-      const sp = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id };
+      const sp = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id, seatToken: newSeatToken() };
       room.spectators[emptyIdx] = sp;
       currentRoom = room;
       currentPlayerId = sp.id;   // 记录观战者身份，否则退出时清不掉自己
       ensureOwner(room);         // 已定义于 L543：房间若没有有效房主，由新加入者接管
       addLog(room, `${name} 进入观战席`);
-      socket.emit('roomJoined', { code: room.code, playerId: sp.id, spectator: true });
+      socket.emit('roomJoined', { code: room.code, playerId: sp.id, spectator: true, seatToken: sp.seatToken });
       broadcastRoom(room);
       return;
     }
 
-    const player = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id, isAI: false, hand: [] };
+    const player = { id: socket.id + '_' + Date.now(), name: name, socketId: socket.id, isAI: false, hand: [], seatToken: newSeatToken() };
     room.players.push(player);
     currentRoom = room;
     currentPlayerId = player.id;
     ensureOwner(room);   // 已定义于 L543：房间若没有有效房主，由新加入者接管
     addLog(room, `${player.name} 加入房间`);
-    socket.emit('roomJoined', { code: room.code, playerId: player.id });
+    socket.emit('roomJoined', { code: room.code, playerId: player.id, seatToken: player.seatToken });
     broadcastRoom(room);
   });
 
@@ -1100,12 +1105,12 @@ io.on('connection', (socket) => {
     if (idx >= 0) {
       const sp = room.spectators[idx];
       room.spectators[idx] = null;
-      const newPlayer = { id: sp.id, name: sp.name, socketId: socket.id, isAI: false, hand: [] };
+      const newPlayer = { id: sp.id, name: sp.name, socketId: socket.id, isAI: false, hand: [], seatToken: sp.seatToken || newSeatToken() };
       room.players.push(newPlayer);
       addLog(room, `${sp.name} 从观战席加入游戏`);
       currentPlayerId = sp.id;
       ensureOwner(room);   // 已定义于 L543，校正/兜底房主身份
-      socket.emit('roomJoined', { code: room.code, playerId: sp.id });
+      socket.emit('roomJoined', { code: room.code, playerId: sp.id, seatToken: newPlayer.seatToken });
       broadcastRoom(room);
     }
   });
@@ -1135,17 +1140,19 @@ io.on('connection', (socket) => {
     if (pos >= 5) { socket.emit('errorMsg', '观战席已满'); return; }
     const p = room.players.splice(idx, 1)[0];
     const spId = 'sp_' + Date.now();
+    // 换成观战身份后保留原令牌，刷新页面仍能认领回来
+    const spToken = p.seatToken || newSeatToken();
     // 房主进观战席：房主身份要跟着新 id 走，否则回到玩家列表后就没有房主权限了
     if (isRoomOwner(room, socket.id, currentPlayerId)) {
       room.ownerPlayerId = spId;
       room.ownerSocketId = socket.id;
     }
-    room.spectators[pos] = { id: spId, name: p.name, socketId: socket.id };
+    room.spectators[pos] = { id: spId, name: p.name, socketId: socket.id, seatToken: spToken };
     addLog(room, `${p.name} 进入观战席`);
     currentPlayerId = spId;
     ensureOwner(room);   // 已定义于 L543，校正/兜底房主身份
     // 告知前端新的身份 id：否则刷新后按旧 id 重连失败，会被当成新玩家
-    socket.emit('roomJoined', { code: room.code, playerId: spId, spectator: true });
+    socket.emit('roomJoined', { code: room.code, playerId: spId, spectator: true, seatToken: spToken });
     broadcastRoom(room);
   });
 
@@ -1446,12 +1453,20 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('reconnect', ({ playerId } = {}) => {
+  socket.on('reconnect', ({ playerId, seatToken } = {}) => {
     playerId = safeStr(playerId);
+    seatToken = safeStr(seatToken);
     if (!playerId) return;
+    // 座位令牌校验：有令牌的座位必须出示正确令牌，防止拿别人公开的 playerId 顶号
+    // 旧版本会话（座位上还没有令牌）允许降级认领一次，并顺手补发令牌
+    const seatAllowed = (seat) => {
+      if (!seat.seatToken) { seat.seatToken = newSeatToken(); return true; }
+      return seat.seatToken === seatToken;
+    };
     for (const room of rooms.values()) {
       const p = room.players.find(p => p.id === playerId);
       if (p) {
+        if (!seatAllowed(p)) { socket.emit('reconnectFailed'); return; }
         // 座位已被另一条活跃连接占用时拒绝认领，避免两个页面同时控制一个人
         if (p.socketId && p.socketId !== socket.id && io.sockets.sockets.get(p.socketId)) {
           socket.emit('reconnectFailed');
@@ -1469,12 +1484,13 @@ io.on('connection', (socket) => {
         currentPlayerId = playerId;
         addLog(room, `${p.name} 重连回来`);
         broadcastRoom(room);
-        socket.emit('reconnected', publicRoomState(room, p));
+        socket.emit('reconnected', { ...publicRoomState(room, p), seatToken: p.seatToken });
         return;
       }
       // 观战者刷新页面也要认领回自己的观战位，否则会变成新观众
       const sp = (room.spectators || []).find(s => s && s.id === playerId);
       if (sp) {
+        if (!seatAllowed(sp)) { socket.emit('reconnectFailed'); return; }
         if (sp.socketId && sp.socketId !== socket.id && io.sockets.sockets.get(sp.socketId)) {
           socket.emit('reconnectFailed');
           return;
@@ -1485,7 +1501,7 @@ io.on('connection', (socket) => {
         currentPlayerId = sp.id;
         addLog(room, `${sp.name} 重连回来`);
         broadcastRoom(room);
-        socket.emit('reconnected', publicRoomState(room, sp));
+        socket.emit('reconnected', { ...publicRoomState(room, sp), seatToken: sp.seatToken });
         return;
       }
     }
