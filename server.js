@@ -1314,17 +1314,15 @@ io.on('connection', (socket) => {
     const room = currentRoom;
     if (!room || room.status !== 'playing' || room.paused || !currentPlayerId) return;
     const me = room.players.find(p => p.id === currentPlayerId);
-    // 只有手牌 ≤2 张时喊"有岁"才有意义，防止乱点刷状态
-    if (!me || me.hand.length > 2) return;
+    // 只有手上正好 2 张（打完就剩 1 张）时才能喊，防止乱点刷状态
+    if (!me || me.hand.length !== 2) return;
     // 只有轮到自己才能喊；抢牌窗口里作为候选（抢完就剩 1 张）也允许
     const isMyTurn = !!room.players[room.currentIndex] && room.players[room.currentIndex].id === currentPlayerId;
     const isGrabCandidate = !!(room.grabAvailable && room.grabAvailable.candidates.some(c => c.playerId === currentPlayerId));
     if (!isMyTurn && !isGrabCandidate) return;
     room.unoCalled[currentPlayerId] = !room.unoCalled[currentPlayerId];
-    // 飘带只在当前回合显示：打出下一张牌（换回合）时消失，另有 10 秒兜底
-    if (room.unoCalled[currentPlayerId]) {
-      setUnoBadge(room, currentPlayerId);
-    } else if (room.unoBadge && room.unoBadge.playerId === currentPlayerId) {
+    // 喊牌时不出飘带：只有真的打出牌、剩 1 张时（playCard / grabCard）才对外显示
+    if (!room.unoCalled[currentPlayerId] && room.unoBadge && room.unoBadge.playerId === currentPlayerId) {
       room.unoBadge = null;
     }
     if (room.pendingReport && room.pendingReport.playerId === currentPlayerId) {
