@@ -1063,7 +1063,8 @@ function renderGame(state) {
     const div = document.createElement('div');
     let playable = myTurn && !state.wildPending && state.status === 'playing';
     if (playable && state.pendingDraw > 0) {
-      playable = (card.type === 3 || card.type === 5);
+      // 与服务端叠加规则保持一致：罚牌为 +4 时只能用 +4 反击，+2 也变暗
+      playable = state.pendingDrawType === 5 ? card.type === 5 : (card.type === 3 || card.type === 5);
     }
     // wildPending 时整手牌禁用（必须通过颜色弹窗选色，防止乱点把 currentColor 置 null）
     // 可抢牌：手上有和刚打出的牌完全一样的牌（包括自己刚打出的，可连出）

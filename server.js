@@ -1400,8 +1400,8 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'playing' || room.paused || !room.justDrew) return;
     const player = room.players[room.currentIndex];
     if (!player || player.id !== currentPlayerId) return;
-    room.grabAvailable = null;  // 当前玩家已行动，抢牌窗口关闭
-    // 用统一的关闭函数，顺手作废候选人在窗口里"提前喊"的标记
+    // 用统一的关闭函数：既关窗口，也作废候选人在窗口里"提前喊"的标记
+    // （不能先把 grabAvailable 置空，否则 closeGrabWindow 拿不到候选名单，提前喊的标记会留到之后的回合）
     closeGrabWindow(room);
     room.justDrew = false;
     advance(room);
