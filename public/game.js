@@ -371,17 +371,25 @@ const SFX = (() => {
       AudioCore.resume();
       applyGain();   // 首次创建音频上下文时总线音量还是 0，这里补上
       switch (name) {
-        case 'card':
-          // 出牌："啪"——纸牌拍在桌上的瞬态 + 一点木头桌面的闷响
-          noiseHit(0.055, 3800, 0.7, 0.55, { type: 'highpass' });   // 高频"啪"的脆点
-          noiseHit(0.12, 1400, 1.2, 0.32);                          // 纸牌本体
-          tone(190, 0.05, 0.22, 'sine', 0, 110);                    // 桌面闷响
+        case 'card': {
+          // 出牌：牌在手里划过空气 → 拍上桌面。三层叠加才像"真牌"
+          const hit = 0.07;
+          noiseHit(0.09, 900, 1.0, 0.11, { to: 2600, attack: 0.02 });                 // 划过来的风声
+          noiseHit(0.028, 6200, 0.6, 0.5, { type: 'highpass', attack: 0.002, when: hit }); // 撞击脆点
+          noiseHit(0.115, 1150, 0.75, 0.45, { when: hit });                            // 牌面拍击的"啪"
+          noiseHit(0.05, 2400, 1.4, 0.18, { when: hit + 0.012 });                      // 纸边回弹的细响
+          tone(175, 0.09, 0.26, 'sine', hit, 95);                                      // 桌面闷响
+          tone(330, 0.045, 0.1, 'triangle', hit, 220);                                 // 硬一点的"嗒"
           break;
-        case 'draw':      // 摸牌：像拉开抽屉——低频摩擦滑过，末尾轻轻一磕
-          noiseHit(0.26, 480, 1.6, 0.3, { to: 1900, sweepEnd: 0.75 });
-          noiseHit(0.1, 900, 1.4, 0.16, { when: 0.2 });
-          tone(150, 0.07, 0.1, 'sine', 0.24, 105);
+        }
+        case 'draw': {
+          // 摸牌："唰"——牌从牌堆上抽出来，纸面摩擦由暗到亮再收尾
+          noiseHit(0.30, 1100, 1.0, 0.30, { to: 4300, sweepEnd: 0.5, attack: 0.03 });  // 主摩擦
+          noiseHit(0.34, 700, 0.9, 0.12, { to: 2400, attack: 0.045 });                  // 低频厚度
+          noiseHit(0.14, 3200, 0.8, 0.16, { to: 1400, attack: 0.02, when: 0.10 });      // 纸边离堆的第二段
+          tone(140, 0.06, 0.08, 'sine', 0.29, 100);                                     // 抽离时轻轻一颤
           break;
+        }
         case 'skip':      // 跳过：两个下行短音
           tone(440, 0.1, 0.16, 'triangle', 0);
           tone(330, 0.14, 0.16, 'triangle', 0.1);
