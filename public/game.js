@@ -931,7 +931,9 @@ function renderGame(state) {
   const curIdx = players.findIndex(p => p.isCurrent);
   let nextPlayer = null;
   if (curIdx >= 0 && state.status !== 'grabbing') {
-    for (let k = 0; k < players.length; k++) {
+    // 从当前玩家的下一位开始找，才是"接下来"；跳过已出完牌的人
+    const active = players.filter(p => !p.finished).length;
+    for (let k = 1; k <= active; k++) {
       const cand = players[((curIdx + dir * k) % players.length + players.length) % players.length];
       if (cand && !cand.finished) { nextPlayer = cand; break; }
     }
