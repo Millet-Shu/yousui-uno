@@ -36,6 +36,8 @@ let handScrollLeft = 0;
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $('screen-' + name).classList.add('active');
+  // 游戏页右上角已经有 ☰ 菜单，齿轮按钮要往左挪，靠这个 class 区分
+  document.body.classList.toggle('in-game', name === 'game');
   // 离开房间页时收起模式选择层，避免被踢/退出后遮罩残留
   if (name !== 'lobby') $('mode-picker').classList.add('hidden');
 }
@@ -135,6 +137,139 @@ $('btn-pause-leave').onclick = () => {
     leftRoom = true;
     showScreen('home');
   });
+};
+
+// ===== 背景音乐（Web Audio 实时合成，不依赖音频文件）=====
+const BGM = (() => {
+  const KEY = 'uno_bgm';
+  let cfg = { on: true, vol: 0.35 };
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (saved && typeof saved === 'object') {
+      if (typeof saved.on === 'boolean') cfg.on = saved.on;
+      if (typeof saved.vol === 'number') cfg.vol = Math.max(0, Math.min(1, saved.vol));
+    }
+  } catch (e) { /* 本地存的数据坏了就用默认值 */ }
+
+  let ctx = null, master = null, step = 0, started = false;
+  // C - Am - F - G 的柔和琶音，循环播放，避免打牌时太安静
+  const CHORDS = [
+    [261.63, 329.63, 392.00, 523.25],
+    [220.00, 261.63, 329.63, 440.00],
+    [174.61, 220.00, 261.63, 349.23],
+    [196.00, 246.94, 293.66, 392.00],
+  ];
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {}
+  }
+
+  function ensureCtx() {
+    if (ctx) return true;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return false;   // 极老的浏览器不支持合成，直接静默
+    ctx = new AC();
+    master = ctx.createGain();
+    master.gain.value = 0;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2400;
+    master.connect(lp);
+    lp.connect(ctx.destination);
+    return true;
+  }
+
+  function playNote(freq, dur, peak, type) {
+    if (!ctx || !master) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type || 'triangle';
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g);
+    g.connect(master);
+    osc.start(t);
+    osc.stop(t + dur + 0.05);
+  }
+
+  function tick() {
+    if (!ctx || !cfg.on) return;
+    const chord = CHORDS[Math.floor(step / 8) % CHORDS.length];
+    playNote(chord[step % 4], 1.4, 0.10);
+    if (step % 4 === 0) playNote(chord[0] / 2, 2.0, 0.08, 'sine');   // 低音铺底
+    step++;
+  }
+
+  function applyGain() {
+    if (!ctx || !master) return;
+    const target = cfg.on ? cfg.vol * 0.5 : 0;
+    master.gain.cancelScheduledValues(ctx.currentTime);
+    master.gain.setTargetAtTime(target, ctx.currentTime, 0.12);
+  }
+
+  function start() {
+    if (!ensureCtx()) return;
+    if (ctx.state === 'suspended') ctx.resume();
+    applyGain();
+    if (started) return;
+    started = true;
+    tick();
+    setInterval(tick, 420);
+  }
+
+  return {
+    config: () => cfg,
+    start,
+    setOn(v) {
+      cfg.on = !!v;
+      save();
+      start();       // 浏览器要求用户手势后才能出声，这里顺带满足
+      applyGain();
+    },
+    setVolume(v) {
+      cfg.vol = Math.max(0, Math.min(1, v));
+      save();
+      applyGain();
+    },
+  };
+})();
+
+// 浏览器不允许无交互自动播放：第一次点击/按键时启动一次
+['pointerdown', 'keydown'].forEach(ev =>
+  window.addEventListener(ev, () => BGM.start(), { once: true, passive: true }));
+
+// ===== 设置面板（规则 + 音乐）=====
+function openSettings() {
+  const cfg = BGM.config();
+  $('toggle-bgm').checked = cfg.on;
+  $('bgm-volume').value = Math.round(cfg.vol * 100);
+  $('bgm-volume').disabled = !cfg.on;
+  $('bgm-volume-value').textContent = Math.round(cfg.vol * 100) + '%';
+  $('settings-modal').classList.remove('hidden');
+  $('settings-modal').querySelector('.settings-body').scrollTop = 0;
+}
+function closeSettings() { $('settings-modal').classList.add('hidden'); }
+
+$('btn-settings').onclick = () => {
+  $('menu-dropdown').classList.add('hidden');
+  openSettings();
+};
+$('btn-settings-close').onclick = closeSettings;
+// 点遮罩空白处也能关闭
+$('settings-modal').onclick = (e) => {
+  if (e.target === $('settings-modal')) closeSettings();
+};
+$('toggle-bgm').onchange = (e) => {
+  BGM.setOn(e.target.checked);
+  $('bgm-volume').disabled = !e.target.checked;
+};
+$('bgm-volume').oninput = (e) => {
+  const pct = Number(e.target.value);
+  BGM.setVolume(pct / 100);
+  $('bgm-volume-value').textContent = pct + '%';
 };
 
 // ===== 模式选择 =====

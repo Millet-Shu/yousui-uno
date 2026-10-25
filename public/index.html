@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>有岁 UNO</title>
-<link rel="stylesheet" href="style.css?v=31">
+<link rel="stylesheet" href="style.css?v=32">
 </head>
 <body>
 
@@ -174,7 +174,67 @@
   <button id="btn-mode-cancel" class="btn ghost mode-cancel">取消</button>
 </div>
 
+<!-- 设置：齿轮按钮（各个页面都能用）+ 设置面板（规则 / 音乐） -->
+<button id="btn-settings" class="btn-menu btn-settings" title="设置">⚙</button>
+<div id="settings-modal" class="modal hidden">
+  <div class="modal-content settings-content">
+    <div class="settings-head">
+      <h3>设置</h3>
+      <button id="btn-settings-close" class="settings-close" title="关闭">✕</button>
+    </div>
+    <div class="settings-body">
+      <h4 class="settings-title">背景音乐</h4>
+      <div class="settings-row">
+        <span>开启音乐</span>
+        <label class="switch">
+          <input type="checkbox" id="toggle-bgm">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="settings-row">
+        <span>音量</span>
+        <input id="bgm-volume" class="volume-slider" type="range" min="0" max="100" step="1" value="35">
+        <span id="bgm-volume-value" class="volume-value">35%</span>
+      </div>
+
+      <h4 class="settings-title">游戏规则 · 正常版 UNO</h4>
+      <div class="rules-scroll">
+        <h5>开局</h5>
+        <ul>
+          <li>2~8 人，每人发 7 张牌，剩下的牌作为摸牌堆。</li>
+          <li>先抢先手：谁先点「抢先手」谁先出牌，并翻出一张起始牌（起始牌是 +2 / +4 时先手要罚摸；是跳或反转时按规则生效）。</li>
+        </ul>
+        <h5>出牌</h5>
+        <ul>
+          <li>打出的牌必须和顶牌同色，或者同数字 / 同功能；万能牌随时能出。</li>
+          <li>顶牌是 +2 时只能接 +2 或 +4，顶牌是 +4 时只能接 +4；接不上的人摸走累积的全部罚牌。</li>
+          <li>跳（⊘）：下家跳过一轮。反转（⇄）：3 人以上换方向，2 人局等于跳过。</li>
+          <li>万能牌打出后由你选择颜色，之后按该颜色接牌。</li>
+          <li>没有能出的牌就点「不出（摸 1 张）」；摸到的牌若能出可以直接打出，否则轮到下家。</li>
+        </ul>
+        <h5>喊 UNO</h5>
+        <ul>
+          <li>手上正好 2 张时会出现「喊 UNO」按钮，只有自己的回合能点。</li>
+          <li>点喊之后别人看不到；等你真的打出一张（剩 1 张），全场才会看到「📢 UNO！」，并在下一个回合开始前消失。</li>
+          <li>剩 1 张却没有喊过，对手可以在 5 秒内举报你，罚摸 2 张。</li>
+        </ul>
+        <h5>抢相同的牌</h5>
+        <ul>
+          <li>别人打出牌后有 3 秒窗口：如果你手里有完全相同的牌，可以「抢相同的牌」替他打出，并接手当前回合。</li>
+          <li>抢到的如果是 +2 / +4，罚牌清零，由后面的人承担。</li>
+        </ul>
+        <h5>胜负</h5>
+        <ul>
+          <li>先出完手牌的人获胜，其余人继续打到分出全部名次。</li>
+          <li>房主可以暂停 / 继续、重开、结束游戏并回到房间。</li>
+        </ul>
+        <p class="rules-note">「有岁 UNO」的专属规则会在版本更新后补充到面板里。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="game.js?v=46"></script>
+<script src="game.js?v=47"></script>
 </body>
 </html>
