@@ -139,115 +139,298 @@ $('btn-pause-leave').onclick = () => {
   });
 };
 
-// ===== 背景音乐（Web Audio 实时合成，不依赖音频文件）=====
+// ===== 音频引擎（Web Audio 实时合成，不依赖音频文件）=====
+// 音乐与音效各走一条总线，音量/开关互不影响
+const AudioCore = (() => {
+  let ctx = null, bgmBus = null, sfxBus = null;
+  function ensure() {
+    if (ctx) return ctx;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;          // 极老的浏览器不支持合成，静默降级
+    ctx = new AC();
+    bgmBus = ctx.createGain(); bgmBus.gain.value = 0;
+    sfxBus = ctx.createGain(); sfxBus.gain.value = 0;
+    mkBus(bgmBus, true);
+    mkBus(sfxBus, false);
+    return ctx;
+  }
+  function mkBus(bus, isBgm) {
+    if (isBgm) {
+      // 背景音乐加低通，压掉高频让它更"垫"在下面，长时间听不刺耳
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 2200;
+      bus.connect(lp); lp.connect(ctx.destination);
+    } else {
+      bus.connect(ctx.destination);
+    }
+  }
+  function resume() { if (ctx && ctx.state === 'suspended') ctx.resume(); }
+  return {
+    ensure, resume,
+    get ctx() { return ctx; },
+    get bgm() { return bgmBus; },
+    get sfx() { return sfxBus; },
+  };
+})();
+
+// 浏览器不允许无交互自动播放：第一次点击/按键时解锁一次
+['pointerdown', 'keydown'].forEach(ev =>
+  window.addEventListener(ev, () => AudioCore.resume(), { once: true, passive: true }));
+
+function loadCfg(key, def) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (saved && typeof saved === 'object') return { ...def, ...saved };
+  } catch (e) { /* 本地数据坏了就用默认值 */ }
+  return { ...def };
+}
+function saveCfg(key, cfg) {
+  try { localStorage.setItem(key, JSON.stringify(cfg)); } catch (e) {}
+}
+
+// ===== 背景音乐 =====
 const BGM = (() => {
   const KEY = 'uno_bgm';
-  let cfg = { on: true, vol: 0.35 };
-  try {
-    const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
-    if (saved && typeof saved === 'object') {
-      if (typeof saved.on === 'boolean') cfg.on = saved.on;
-      if (typeof saved.vol === 'number') cfg.vol = Math.max(0, Math.min(1, saved.vol));
-    }
-  } catch (e) { /* 本地存的数据坏了就用默认值 */ }
+  const cfg = loadCfg(KEY, { on: true, vol: 0.35 });
+  let step = 0, started = false;
 
-  let ctx = null, master = null, step = 0, started = false;
-  // C - Am - F - G 的柔和琶音，循环播放，避免打牌时太安静
-  const CHORDS = [
+  // 8 小节循环：C - G/B - Am - F - C - Em - F - G，比 4 个和弦更长，不容易听腻
+  const BARS = [
     [261.63, 329.63, 392.00, 523.25],
+    [246.94, 293.66, 392.00, 493.88],
     [220.00, 261.63, 329.63, 440.00],
+    [174.61, 220.00, 261.63, 349.23],
+    [261.63, 329.63, 392.00, 523.25],
+    [164.81, 196.00, 246.94, 329.63],
     [174.61, 220.00, 261.63, 349.23],
     [196.00, 246.94, 293.66, 392.00],
   ];
+  // 两个声部交替：琶音（密）+ 旋律（疏），旋律留白避免机械重复
+  const ARP = [0, 1, 2, 3, 2, 1, 2, 3];
+  const MELODY = [null, 3, null, 2, null, null, 1, null];
+  const STEP_MS = 400;
 
-  function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {}
-  }
-
-  function ensureCtx() {
-    if (ctx) return true;
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return false;   // 极老的浏览器不支持合成，直接静默
-    ctx = new AC();
-    master = ctx.createGain();
-    master.gain.value = 0;
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 2400;
-    master.connect(lp);
-    lp.connect(ctx.destination);
-    return true;
-  }
-
-  function playNote(freq, dur, peak, type) {
-    if (!ctx || !master) return;
-    const t = ctx.currentTime;
+  function note(bus, freq, dur, peak, type, delay) {
+    const ctx = AudioCore.ctx;
+    if (!ctx || !bus) return;
+    const t = ctx.currentTime + (delay || 0);
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = type || 'triangle';
     osc.frequency.value = freq;
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(peak, t + 0.04);
+    g.gain.linearRampToValueAtTime(peak, t + 0.03);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(g);
-    g.connect(master);
+    osc.connect(g); g.connect(bus);
     osc.start(t);
     osc.stop(t + dur + 0.05);
   }
 
   function tick() {
-    if (!ctx || !cfg.on) return;
-    const chord = CHORDS[Math.floor(step / 8) % CHORDS.length];
-    playNote(chord[step % 4], 1.4, 0.10);
-    if (step % 4 === 0) playNote(chord[0] / 2, 2.0, 0.08, 'sine');   // 低音铺底
+    if (!cfg.on) return;
+    const bus = AudioCore.bgm;
+    if (!bus) return;
+    const barIdx = Math.floor(step / 8) % BARS.length;
+    const chord = BARS[barIdx];
+    const s = step % 8;
+
+    // 小节开头：低音 + 长音铺垫（每两小节才铺一次，留出空气感）
+    if (s === 0) {
+      note(bus, chord[0] / 2, 2.6, 0.09, 'sine');
+      if (barIdx % 2 === 0) {
+        note(bus, chord[1], 3.0, 0.035, 'sine');
+        note(bus, chord[2], 3.0, 0.035, 'sine');
+      }
+    }
+    // 琶音
+    note(bus, chord[ARP[s]], 0.9, 0.055, 'triangle');
+    // 旋律：高八度、只在部分拍子出现
+    const m = MELODY[s];
+    if (m !== null) note(bus, chord[m] * 2, 1.1, 0.05, 'sine');
+    // 第 4 拍加一个轻盈的高音点缀，打破均匀感
+    if (s === 4 && barIdx % 2 === 1) note(bus, chord[3] * 4, 0.5, 0.03, 'sine', 0.001);
     step++;
   }
 
   function applyGain() {
-    if (!ctx || !master) return;
-    const target = cfg.on ? cfg.vol * 0.5 : 0;
-    master.gain.cancelScheduledValues(ctx.currentTime);
-    master.gain.setTargetAtTime(target, ctx.currentTime, 0.12);
+    const ctx = AudioCore.ctx, bus = AudioCore.bgm;
+    if (!ctx || !bus) return;
+    const target = cfg.on ? cfg.vol * 0.45 : 0;
+    bus.gain.cancelScheduledValues(ctx.currentTime);
+    bus.gain.setTargetAtTime(target, ctx.currentTime, 0.15);
   }
 
   function start() {
-    if (!ensureCtx()) return;
-    if (ctx.state === 'suspended') ctx.resume();
+    if (!AudioCore.ensure()) return;
+    AudioCore.resume();
     applyGain();
     if (started) return;
     started = true;
     tick();
-    setInterval(tick, 420);
+    setInterval(tick, STEP_MS);
   }
 
   return {
     config: () => cfg,
     start,
+    applyGain,
     setOn(v) {
-      cfg.on = !!v;
-      save();
-      start();       // 浏览器要求用户手势后才能出声，这里顺带满足
+      cfg.on = !!v; saveCfg(KEY, cfg);
+      start();            // 用户在设置里操作也算一次交互，可以解锁播放
       applyGain();
     },
     setVolume(v) {
-      cfg.vol = Math.max(0, Math.min(1, v));
-      save();
+      cfg.vol = Math.max(0, Math.min(1, v)); saveCfg(KEY, cfg);
       applyGain();
     },
   };
 })();
 
-// 浏览器不允许无交互自动播放：第一次点击/按键时启动一次
+// ===== 音效 =====
+const SFX = (() => {
+  const KEY = 'uno_sfx';
+  const cfg = loadCfg(KEY, { on: true, vol: 0.6 });
+  let noiseBuf = null;
+
+  function applyGain() {
+    const ctx = AudioCore.ctx, bus = AudioCore.sfx;
+    if (!ctx || !bus) return;
+    bus.gain.setTargetAtTime(cfg.on ? cfg.vol : 0, ctx.currentTime, 0.05);
+  }
+  applyGain();
+
+  function noiseBurst(dur, freq, q, peak) {
+    const ctx = AudioCore.ctx, bus = AudioCore.sfx;
+    if (!ctx || !bus) return;
+    if (!noiseBuf) {
+      const len = Math.floor(ctx.sampleRate * 0.25);
+      noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q;
+    const g = ctx.createGain();
+    const t = ctx.currentTime;
+    g.gain.setValueAtTime(peak, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(bp); bp.connect(g); g.connect(bus);
+    src.start(t);
+    src.stop(t + dur + 0.02);
+  }
+
+  function tone(freq, dur, peak, type, when, slideTo) {
+    const ctx = AudioCore.ctx, bus = AudioCore.sfx;
+    if (!ctx || !bus) return;
+    const t = ctx.currentTime + (when || 0);
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type || 'triangle';
+    osc.frequency.setValueAtTime(freq, t);
+    if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g); g.connect(bus);
+    osc.start(t);
+    osc.stop(t + dur + 0.03);
+  }
+
+  return {
+    config: () => cfg,
+    applyGain,
+    setOn(v) {
+      cfg.on = !!v; saveCfg(KEY, cfg);
+      AudioCore.ensure(); AudioCore.resume();
+      applyGain();
+      if (cfg.on) this.click();
+    },
+    setVolume(v) {
+      cfg.vol = Math.max(0, Math.min(1, v)); saveCfg(KEY, cfg);
+      applyGain();
+    },
+    play(name) {
+      if (!cfg.on || !AudioCore.ensure()) return;
+      AudioCore.resume();
+      applyGain();   // 首次创建音频上下文时总线音量还是 0，这里补上
+      switch (name) {
+        case 'card':      // 出牌：纸牌滑出的沙沙声 + 轻点
+          noiseBurst(0.11, 2000, 0.9, 0.35);
+          tone(520, 0.06, 0.12, 'square', 0.01);
+          break;
+        case 'draw':      // 摸牌：更闷的摩擦声
+          noiseBurst(0.16, 900, 0.7, 0.3);
+          tone(300, 0.12, 0.1, 'sine', 0.02, 420);
+          break;
+        case 'skip':      // 跳过：两个下行短音
+          tone(440, 0.1, 0.16, 'triangle', 0);
+          tone(330, 0.14, 0.16, 'triangle', 0.1);
+          break;
+        case 'reverse':   // 反转：上行三连音
+          tone(392, 0.08, 0.15, 'triangle', 0);
+          tone(523, 0.08, 0.15, 'triangle', 0.07);
+          tone(659, 0.12, 0.15, 'triangle', 0.14);
+          break;
+        case 'grab':      // 抢牌：清脆一声
+          tone(880, 0.1, 0.2, 'square', 0, 1320);
+          noiseBurst(0.08, 3200, 1.2, 0.2);
+          break;
+        case 'uno':       // 喊 UNO：明亮的和弦
+          tone(523, 0.12, 0.16, 'triangle', 0);
+          tone(659, 0.12, 0.16, 'triangle', 0.06);
+          tone(784, 0.22, 0.16, 'triangle', 0.12);
+          break;
+        case 'penalty':   // 罚摸：低沉一下
+          tone(220, 0.2, 0.18, 'sawtooth', 0, 140);
+          break;
+        case 'win':       // 胜利：上扬四音
+          [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.3, 0.16, 'triangle', i * 0.12));
+          break;
+        case 'click':     // 界面点击
+          tone(660, 0.05, 0.08, 'sine', 0);
+          break;
+        default: break;
+      }
+    },
+    click() { this.play('click'); },
+  };
+})();
+
+// BGM 在用户第一次交互后开始（避免浏览器拦截自动播放）
 ['pointerdown', 'keydown'].forEach(ev =>
   window.addEventListener(ev, () => BGM.start(), { once: true, passive: true }));
 
-// ===== 设置面板（规则 + 音乐）=====
+// 根据日志新行播放对应音效：只在有新日志时触发，不会重复响
+let lastSfxLine = null;
+function playStateSounds(state) {
+  if (!state || !state.log || !state.log.length) return;
+  const line = state.log[state.log.length - 1];
+  if (line === lastSfxLine) return;
+  const first = lastSfxLine === null;
+  lastSfxLine = line;
+  if (first) return;   // 首次渲染（进房间/刷新）不补放音效
+  if (/获胜|游戏结束/.test(line)) { SFX.play('win'); return; }
+  if (/UNO|有岁/.test(line)) { SFX.play('uno'); return; }
+  if (/抢/.test(line)) { SFX.play('grab'); return; }
+  if (/方向反转/.test(line)) { SFX.play('reverse'); return; }
+  if (/跳过/.test(line)) { SFX.play('skip'); return; }
+  if (/罚|摸/.test(line)) { SFX.play('draw'); return; }
+  SFX.play('card');
+}
+
+// ===== 设置面板（规则 + 音乐 + 音效）=====
 function openSettings() {
-  const cfg = BGM.config();
-  $('toggle-bgm').checked = cfg.on;
-  $('bgm-volume').value = Math.round(cfg.vol * 100);
-  $('bgm-volume').disabled = !cfg.on;
-  $('bgm-volume-value').textContent = Math.round(cfg.vol * 100) + '%';
+  const b = BGM.config(), s = SFX.config();
+  $('toggle-bgm').checked = b.on;
+  $('bgm-volume').value = Math.round(b.vol * 100);
+  $('bgm-volume').disabled = !b.on;
+  $('bgm-volume-value').textContent = Math.round(b.vol * 100) + '%';
+  $('toggle-sfx').checked = s.on;
+  $('sfx-volume').value = Math.round(s.vol * 100);
+  $('sfx-volume').disabled = !s.on;
+  $('sfx-volume-value').textContent = Math.round(s.vol * 100) + '%';
   $('settings-modal').classList.remove('hidden');
   $('settings-modal').querySelector('.settings-body').scrollTop = 0;
 }
@@ -270,6 +453,16 @@ $('bgm-volume').oninput = (e) => {
   const pct = Number(e.target.value);
   BGM.setVolume(pct / 100);
   $('bgm-volume-value').textContent = pct + '%';
+};
+$('toggle-sfx').onchange = (e) => {
+  SFX.setOn(e.target.checked);
+  $('sfx-volume').disabled = !e.target.checked;
+};
+$('sfx-volume').oninput = (e) => {
+  const pct = Number(e.target.value);
+  SFX.setVolume(pct / 100);
+  $('sfx-volume-value').textContent = pct + '%';
+  SFX.play('click');   // 拖动时顺便试听音量
 };
 
 // ===== 模式选择 =====
@@ -696,6 +889,25 @@ function renderGame(state) {
   } else {
     $('status-text').textContent = `等待 ${escapeHtml(state.currentPlayerName)} 出牌...`;
   }
+
+  // 打牌顺序提示：方向 + 接下来轮到谁，反转/跳过后不用猜
+  const dir = state.direction >= 0 ? 1 : -1;
+  const curIdx = players.findIndex(p => p.isCurrent);
+  let nextPlayer = null;
+  if (curIdx >= 0 && state.status !== 'grabbing') {
+    for (let k = 0; k < players.length; k++) {
+      const cand = players[((curIdx + dir * k) % players.length + players.length) % players.length];
+      if (cand && !cand.finished) { nextPlayer = cand; break; }
+    }
+  }
+  $('turn-order').classList.toggle('hidden', !nextPlayer);
+  if (nextPlayer) {
+    $('dir-icon').textContent = dir === 1 ? '↺' : '↻';
+    $('dir-text').textContent = dir === 1 ? '逆时针' : '顺时针';
+    $('next-player').textContent = `接下来：${nextPlayer.isYou ? '你' : escapeHtml(nextPlayer.name)}`;
+  }
+
+  playStateSounds(state);
 
   // 喊 UNO / 有岁：手上正好 2 张时才有按钮，且只在自己回合显示（抢牌候选同理）
   const myHandCount = state.yourHand.length;

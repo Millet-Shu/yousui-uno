@@ -381,6 +381,22 @@ input:focus { border-color: #6c7bff; }
 }
 #status-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 72vw; }
 
+/* 打牌顺序提示：方向 + 下一位，反转后能立刻看清 */
+.turn-order {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 10px;
+  background: rgba(108,123,255,0.22);
+  color: #cfd6ff; font-size: 11px; white-space: nowrap;
+}
+.turn-order.hidden { display: none !important; }
+#dir-icon { font-size: 12px; color: #9fb0ff; }
+.turn-order-sep { opacity: .5; }
+#next-player { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 420px) {
+  .turn-order { font-size: 10px; padding: 2px 6px; }
+  #status-text { max-width: 46vw; }
+}
+
 #game-log {
   position: absolute;
   bottom: calc(var(--card-h) + 66px);

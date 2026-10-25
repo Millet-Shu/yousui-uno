@@ -453,12 +453,21 @@ function handleCardEffect(room, player, card, chosenColor) {
       addLog(room, `${skipped ? skipped.name : ''} 被跳过`);
       break;
     }
-    case T.REVERSE:
+    case T.REVERSE: {
       room.currentColor = card.color;
       room.direction *= -1;
-      addLog(room, `方向反转`);
-      advance(room);
+      if (room.players.filter(p => !p.finished).length === 2) {
+        // 官方规则：2 人局反转等同"跳过"，对手被跳过、出牌者再来一回合
+        const skipped = room.players[nextIndex(room)];
+        advance(room);
+        advance(room);
+        addLog(room, `方向反转（2 人局=跳过），${skipped ? skipped.name : ''} 被跳过`);
+      } else {
+        addLog(room, `方向反转`);
+        advance(room);
+      }
       break;
+    }
     case T.DRAW_TWO:
       room.currentColor = card.color;
       room.pendingDraw += 2;

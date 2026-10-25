@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>有岁 UNO</title>
-<link rel="stylesheet" href="style.css?v=32">
+<link rel="stylesheet" href="style.css?v=33">
 </head>
 <body>
 
@@ -86,6 +86,10 @@
 
     <div id="status-bar">
       <span id="status-text">准备中...</span>
+      <span id="turn-order" class="turn-order hidden">
+        <span id="dir-icon">↺</span><span id="dir-text">逆时针</span>
+        <span class="turn-order-sep">·</span><span id="next-player"></span>
+      </span>
     </div>
 
     <!-- 右上角菜单 -->
@@ -197,6 +201,20 @@
         <span id="bgm-volume-value" class="volume-value">35%</span>
       </div>
 
+      <h4 class="settings-title">音效</h4>
+      <div class="settings-row">
+        <span>开启音效</span>
+        <label class="switch">
+          <input type="checkbox" id="toggle-sfx">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="settings-row">
+        <span>音效音量</span>
+        <input id="sfx-volume" class="volume-slider" type="range" min="0" max="100" step="1" value="60">
+        <span id="sfx-volume-value" class="volume-value">60%</span>
+      </div>
+
       <h4 class="settings-title">游戏规则 · 正常版 UNO</h4>
       <div class="rules-scroll">
         <h5>开局</h5>
@@ -208,7 +226,8 @@
         <ul>
           <li>打出的牌必须和顶牌同色，或者同数字 / 同功能；万能牌随时能出。</li>
           <li>顶牌是 +2 时只能接 +2 或 +4，顶牌是 +4 时只能接 +4；接不上的人摸走累积的全部罚牌。</li>
-          <li>跳（⊘）：下家跳过一轮。反转（⇄）：3 人以上换方向，2 人局等于跳过。</li>
+          <li>跳（⊘）：下家跳过一轮。反转（⇄）：换方向；2 人局里反转等同跳过，对手被跳过、你再来一张。</li>
+          <li>状态条右侧会一直显示当前出牌方向（↺ 逆时针 / ↻ 顺时针）和接下来出牌的玩家，反转后不用猜。</li>
           <li>万能牌打出后由你选择颜色，之后按该颜色接牌。</li>
           <li>没有能出的牌就点「不出（摸 1 张）」；摸到的牌若能出可以直接打出，否则轮到下家。</li>
         </ul>
@@ -235,6 +254,6 @@
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="game.js?v=47"></script>
+<script src="game.js?v=48"></script>
 </body>
 </html>
