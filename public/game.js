@@ -383,11 +383,10 @@ const SFX = (() => {
           break;
         }
         case 'draw': {
-          // 摸牌："唰"——牌从牌堆上抽出来，纸面摩擦由暗到亮再收尾
-          noiseHit(0.30, 1100, 1.0, 0.30, { to: 4300, sweepEnd: 0.5, attack: 0.03 });  // 主摩擦
-          noiseHit(0.34, 700, 0.9, 0.12, { to: 2400, attack: 0.045 });                  // 低频厚度
-          noiseHit(0.14, 3200, 0.8, 0.16, { to: 1400, attack: 0.02, when: 0.10 });      // 纸边离堆的第二段
-          tone(140, 0.06, 0.08, 'sine', 0.29, 100);                                     // 抽离时轻轻一颤
+          // 摸牌："唰"——用低通扫频，去掉高频沙粒，留下纸面滑动的"气"
+          noiseHit(0.30, 620, 0.8, 0.26, { type: 'lowpass', to: 2400, sweepEnd: 0.55, attack: 0.045 });
+          noiseHit(0.26, 2100, 0.9, 0.10, { type: 'lowpass', to: 1200, attack: 0.05, when: 0.03 }); // 圆润的中频，抽离的"呼"
+          tone(150, 0.05, 0.05, 'sine', 0.28, 105);   // 尾巴上轻轻一收
           break;
         }
         case 'skip':      // 跳过：两个下行短音
@@ -399,10 +398,13 @@ const SFX = (() => {
           tone(523, 0.08, 0.15, 'triangle', 0.07);
           tone(659, 0.12, 0.15, 'triangle', 0.14);
           break;
-        case 'grab':      // 抢牌：清脆一声
-          tone(880, 0.1, 0.2, 'square', 0, 1320);
-          noiseBurst(0.08, 3200, 1.2, 0.2);
+        case 'grab': {     // 抢牌：拍一下牌 + 清脆的"叮"，比普通出牌更抢耳
+          noiseHit(0.028, 6200, 0.6, 0.42, { type: 'highpass', attack: 0.002 });
+          noiseHit(0.11, 1150, 0.75, 0.4);
+          tone(175, 0.09, 0.2, 'sine', 0, 95);
+          tone(880, 0.1, 0.16, 'square', 0.015, 1320);
           break;
+        }
         case 'uno':       // 喊 UNO：明亮的和弦
           tone(523, 0.12, 0.16, 'triangle', 0);
           tone(659, 0.12, 0.16, 'triangle', 0.06);
@@ -428,21 +430,29 @@ const SFX = (() => {
 ['pointerdown', 'keydown'].forEach(ev =>
   window.addEventListener(ev, () => BGM.start(), { once: true, passive: true }));
 
-// 根据日志新行播放对应音效：只在有新日志时触发，不会重复响
-let lastSfxLine = null;
+// 根据新出现的日志行播放音效：一次动作可能写多条日志（抢牌常伴随跳过/反转），
+// 所以要扫描所有新行并按优先级挑一个，而不是只看最后一行
+let sfxLastLine = null;
 function playStateSounds(state) {
-  if (!state || !state.log || !state.log.length) return;
-  const line = state.log[state.log.length - 1];
-  if (line === lastSfxLine) return;
-  const first = lastSfxLine === null;
-  lastSfxLine = line;
-  if (first) return;   // 首次渲染（进房间/刷新）不补放音效
-  if (/获胜|游戏结束/.test(line)) { SFX.play('win'); return; }
-  if (/UNO|有岁/.test(line)) { SFX.play('uno'); return; }
-  if (/抢/.test(line)) { SFX.play('grab'); return; }
-  if (/方向反转/.test(line)) { SFX.play('reverse'); return; }
-  if (/跳过/.test(line)) { SFX.play('skip'); return; }
-  if (/罚|摸/.test(line)) { SFX.play('draw'); return; }
+  if (!state || !Array.isArray(state.log) || !state.log.length) return;
+  const log = state.log;
+  if (sfxLastLine === null) { sfxLastLine = log[log.length - 1]; return; }   // 首次渲染不补音
+  const idx = log.lastIndexOf(sfxLastLine);
+  if (idx < 0) {   // 找不到上一行（重开/换局日志被清空），当作重新开始，不补音
+    sfxLastLine = log[log.length - 1];
+    return;
+  }
+  const fresh = log.slice(idx + 1);
+  sfxLastLine = log[log.length - 1];
+  if (!fresh.length) return;
+
+  const text = fresh.join(' | ');
+  if (/获胜|游戏结束/.test(text)) { SFX.play('win'); return; }
+  if (/抢/.test(text)) { SFX.play('grab'); return; }          // 抢牌优先：常带跳过/反转，不能被覆盖
+  if (/UNO|有岁/.test(text)) { SFX.play('uno'); return; }
+  if (/方向反转/.test(text)) { SFX.play('reverse'); return; }
+  if (/跳过/.test(text)) { SFX.play('skip'); return; }
+  if (/罚|摸/.test(text)) { SFX.play('draw'); return; }
   SFX.play('card');
 }
 
