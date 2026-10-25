@@ -370,8 +370,13 @@ function grabLead(room, playerId) {
     advance(room);
   } else if (starter.type === T.REVERSE) {
     room.direction *= -1;
-    addLog(room, `起始反转，方向反转`);
-    advance(room);
+    if (room.players.filter(p => !p.finished).length === 2) {
+      // 与对局中一致：2 人局反转等同跳过，先手者保留回合
+      addLog(room, `起始反转（2 人局=跳过），下家被跳过`);
+    } else {
+      addLog(room, `起始反转，方向反转`);
+      advance(room);
+    }
   }
 
   broadcastRoom(room);
