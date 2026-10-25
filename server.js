@@ -739,7 +739,8 @@ function grabCard(room, playerId) {
   // 抢出后剩 1 张且没喊有岁 → 可被举报（5 秒内有效）
   if (grabber.hand.length === 1 && !myUnoCalled) {
     setPendingReport(room, grabber);
-  } else {
+  } else if (room.pendingReport && room.pendingReport.playerId === grabber.id) {
+    // 只撤销自己的举报窗口，不能顺手清掉别人的
     room.pendingReport = null;
   }
   if (myUnoCalled && grabber.hand.length <= 1) {
@@ -759,6 +760,25 @@ function grabCard(room, playerId) {
   handleCardEffect(room, grabber, card, null);
   // 抢到的是万能牌且抢牌者是 AI（含离线代理）时，需要立刻替它选色，否则会卡在选色
   if (room.wildPending && isAutoPlayer(room.players[room.currentIndex])) scheduleIfAuto(room, AI_DELAY_EXTRA);
+}
+
+// 只剩 1 人时不该继续"单人打牌"：直接结束对局，等房主重开
+// （离开/被踢都会走到这里，避免人走光了还卡在一个人的对局里）
+function abortIfTooFewPlayers(room) {
+  if (room.status === 'waiting' || room.status === 'over' || room.players.length >= 2) return false;
+  room.status = 'over';
+  room.grabAvailable = null;
+  room.pendingReport = null;
+  room.wildPending = false;
+  room.justDrew = false;
+  room.pendingDraw = 0;
+  room.pendingDrawType = null;
+  room.unoBadge = null;
+  room.paused = false;
+  room.pausedBy = null;
+  room.pausedById = null;
+  addLog(room, '对手都离开了，本局结束');
+  return true;
 }
 
 // 设置举报窗口（5 秒后自动失效，避免过时的举报按钮一直挂着）
@@ -999,6 +1019,7 @@ io.on('connection', (socket) => {
     room.wildPending = false;
     room.pendingReport = null;
     room.unoCalled = {};
+    room.unoBadge = null;   // 回到房间时不要再残留喊牌飘带
     room.justDrew = false;
     room.aiTurnPending = false;
     room.aiTurnSeq = null;
@@ -1080,6 +1101,8 @@ io.on('connection', (socket) => {
       } else if (room.currentIndex >= room.players.length) {
         room.currentIndex = 0;
       }
+      // 踢完只剩 1 人：结束对局，避免单人僵尸局
+      abortIfTooFewPlayers(room);
 
       scheduleGrabLeadFallback(room);   // 抢先手阶段没人能点按钮时兜底开局
       broadcastRoom(room);
@@ -1285,6 +1308,8 @@ io.on('connection', (socket) => {
         }
       }
     }
+    // 有人走后只剩 1 人：结束对局，别让剩下的人独自打牌
+    abortIfTooFewPlayers(room);
     const specIdx = (room.spectators || []).findIndex(s => s && s.id === currentPlayerId);
     if (specIdx >= 0) {
       const s = room.spectators[specIdx];
@@ -1371,6 +1396,8 @@ io.on('connection', (socket) => {
     const player = room.players[room.currentIndex];
     if (!player || player.id !== currentPlayerId) return;
     room.grabAvailable = null;  // 当前玩家已行动，抢牌窗口关闭
+    // 用统一的关闭函数，顺手作废候选人在窗口里"提前喊"的标记
+    closeGrabWindow(room);
     room.justDrew = false;
     advance(room);
     room.unoBadge = null;   // 换到下一位玩家，飘带消失

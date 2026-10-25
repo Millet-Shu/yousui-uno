@@ -378,12 +378,13 @@ input:focus { border-color: #6c7bff; }
   border-radius: 20px;
   font-size: 13px;
   z-index: 10;
+  overflow: hidden;   /* 内容太长时宁可省略，也不要撑出屏幕 */
 }
-#status-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 72vw; }
+#status-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 72vw; flex: 0 1 auto; min-width: 0; }
 
 /* 打牌顺序提示：方向 + 下一位，反转后能立刻看清 */
 .turn-order {
-  display: inline-flex; align-items: center; gap: 4px;
+  display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto;
   padding: 2px 8px; border-radius: 10px;
   background: rgba(108,123,255,0.22);
   color: #cfd6ff; font-size: 11px; white-space: nowrap;
