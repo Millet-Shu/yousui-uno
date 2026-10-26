@@ -991,6 +991,8 @@ function renderGame(state) {
   // 颜色弹窗：只有"服务端要求选色"或"本地已点开万能牌"时才显示，否则自动关闭
   const needColor = !!myTurn && (state.wildPending || window._pendingCardIndex !== undefined);
   $('color-modal').classList.toggle('hidden', !needColor);
+  // 本地还没出牌时可以点 × 反悔；服务端已经收下这张万能牌（wildPending）时必须选色，不给取消
+  $('color-cancel').classList.toggle('hidden', !!state.wildPending);
   if (!needColor) window._pendingCardIndex = undefined;
 
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing' || isSpectator);
@@ -1127,6 +1129,13 @@ document.querySelectorAll('.color-btn').forEach(btn => {
     }
   };
 });
+
+// 反悔：还没把万能牌发给服务端时，点 × 直接放弃这次出牌
+$('color-cancel').onclick = () => {
+  $('color-modal').classList.add('hidden');
+  window._pendingCardIndex = undefined;
+  document.querySelectorAll('.hand-card.selected').forEach(d => d.classList.remove('selected'));
+};
 
 // 摸牌堆
 document.querySelector('#draw-pile').onclick = () => {

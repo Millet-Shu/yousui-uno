@@ -475,7 +475,23 @@ input:focus { border-color: #6c7bff; }
   padding: 30px;
   border-radius: 12px;
   text-align: center;
+  position: relative;
 }
+/* 颜色弹窗右上角的取消：还没把牌打出去时可以反悔 */
+.color-cancel {
+  position: absolute;
+  top: 6px; right: 8px;
+  width: 30px; height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+  color: #cfd6f5;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.color-cancel:hover { background: rgba(255,255,255,0.24); color: #fff; }
 .color-buttons { display: flex; gap: 12px; margin-top: 16px; }
 .color-btn {
   width: 70px;
