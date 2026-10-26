@@ -423,12 +423,12 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   room.topCard = card;
   room.justDrew = false;
 
-  // 没喊有岁就出到剩 1 张 → 可以被举报（5 秒内有效）
+  // 又有人出牌 → 上一张牌留下的举报窗口立即失效
+  // 举报只在"刚打完、还没人接着出"的间隙里有效，给没喊的人留一个逃脱机会
+  room.pendingReport = null;
+  // 没喊有岁就出到剩 1 张 → 可以被举报（直到下一张牌被打出/抢出，或 5 秒超时）
   if (room.status === 'playing' && player.hand.length === 1 && !myUnoCalled) {
     setPendingReport(room, player);
-  } else if (room.pendingReport && room.pendingReport.playerId === player.id) {
-    // 只有被举报者本人出牌才撤销举报窗口，别人出牌不影响
-    room.pendingReport = null;
   }
 
   // ✅ 修复：UNO 必须打完剩 <=1 张才算数（之前错写成 <=2）
@@ -741,12 +741,11 @@ function grabCard(room, playerId) {
   room.topCard = card;
   room.justDrew = false;
 
-  // 抢出后剩 1 张且没喊有岁 → 可被举报（5 秒内有效）
+  // 抢牌也算"有人接着出牌"，上一张牌的举报窗口立即失效
+  room.pendingReport = null;
+  // 抢出后剩 1 张且没喊有岁 → 可被举报（直到下一张牌被打出/抢出，或 5 秒超时）
   if (grabber.hand.length === 1 && !myUnoCalled) {
     setPendingReport(room, grabber);
-  } else if (room.pendingReport && room.pendingReport.playerId === grabber.id) {
-    // 只撤销自己的举报窗口，不能顺手清掉别人的
-    room.pendingReport = null;
   }
   if (myUnoCalled && grabber.hand.length <= 1) {
     addLog(room, `${grabber.name} 喊了"${rulesOf(room).unoWord}"`);
