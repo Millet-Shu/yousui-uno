@@ -894,14 +894,15 @@ function renderGame(state) {
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
     let cardsHtml = '';
     // 最多显示 11 张牌背，叠放间距由 CSS 控制（居中、不撑出面板）
-    // 手牌数直接写在最上面那张的背面：超过 11 张时写总数，没开"显示手牌数"也能一眼看到
+    // 只有超过 11 张（数不清了）才在最上面那张牌背写总数；没超过就数牌背，
+    // 想精确看数量再开"显示手牌数"开关
     const maxStack = 11;
     const shown = Math.min(p.handCount, maxStack);
     const backCls = isOfficialUI() ? 'opp-card-back official' : 'opp-card-back';
     for (let j = 0; j < shown; j++) {
-      const isTop = j === shown - 1;
+      const showNum = j === shown - 1 && p.handCount > maxStack;
       cardsHtml += '<div class="' + backCls + '">' +
-        (isTop ? '<span class="back-count">' + p.handCount + '</span>' : '') + '</div>';
+        (showNum ? '<span class="back-count">' + p.handCount + '</span>' : '') + '</div>';
     }
     const countLabel = showHandCount ? `<div class="hand-count">${p.handCount}张</div>` : '';
     const onlineDot = p.offline ? '<span class="dot offline"></span>' : '<span class="dot online"></span>';
