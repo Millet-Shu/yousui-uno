@@ -164,7 +164,7 @@ const AudioCore = (() => {
       bus.connect(ctx.destination);
     }
   }
-  function resume() { if (ctx && ctx.state === 'suspended') ctx.resume(); }
+  function resume() { if (ctx && ctx.state !== 'running') ctx.resume(); }
   return {
     ensure, resume,
     get ctx() { return ctx; },
@@ -173,9 +173,13 @@ const AudioCore = (() => {
   };
 })();
 
-// 浏览器不允许无交互自动播放：第一次点击/按键时解锁一次
-['pointerdown', 'keydown'].forEach(ev =>
-  window.addEventListener(ev, () => AudioCore.resume(), { once: true, passive: true }));
+// 浏览器不允许无交互自动播放：每次点击/按键都顺手解锁并启动音乐
+// （只监听"第一次"不够：断线重连、切后台再回来时音频会被系统挂起，之后就没声了）
+function kickAudio() { AudioCore.resume(); BGM.start(); }
+['pointerdown', 'keydown', 'touchstart'].forEach(ev =>
+  window.addEventListener(ev, kickAudio, { passive: true }));
+// 从后台切回前台时也补一次（手机锁屏/切 App 后音频上下文会被挂起）
+document.addEventListener('visibilitychange', () => { if (!document.hidden) kickAudio(); });
 
 function loadCfg(key, def) {
   try {
@@ -890,13 +894,15 @@ function renderGame(state) {
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
     let cardsHtml = '';
     // 最多显示 11 张牌背，叠放间距由 CSS 控制（居中、不撑出面板）
+    // 手牌数直接写在最上面那张的背面：超过 11 张时写总数，没开"显示手牌数"也能一眼看到
     const maxStack = 11;
     const shown = Math.min(p.handCount, maxStack);
     const backCls = isOfficialUI() ? 'opp-card-back official' : 'opp-card-back';
     for (let j = 0; j < shown; j++) {
-      cardsHtml += '<div class="' + backCls + '"></div>';
+      const isTop = j === shown - 1;
+      cardsHtml += '<div class="' + backCls + '">' +
+        (isTop ? '<span class="back-count">' + p.handCount + '</span>' : '') + '</div>';
     }
-    if (p.handCount > maxStack) cardsHtml += '<div class="opp-card-back overflow">+' + (p.handCount - maxStack) + '</div>';
     const countLabel = showHandCount ? `<div class="hand-count">${p.handCount}张</div>` : '';
     const onlineDot = p.offline ? '<span class="dot offline"></span>' : '<span class="dot online"></span>';
     const proxyBadge = p.aiProxy ? '<span class="proxy-badge">AI代理</span>' : '';

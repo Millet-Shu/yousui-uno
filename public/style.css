@@ -293,10 +293,23 @@ input:focus { border-color: #6c7bff; }
 .dot.online { background: #30d060; }
 .dot.offline { background: #888; }
 .opp-hand { position: relative; height: 60px; margin: 6px 0; display: flex; justify-content: center; align-items: flex-start; }
-.opp-card-back { flex: 0 0 auto; width: 40px; height: 60px; background: repeating-linear-gradient(45deg, #c03030, #c03030 6px, #a02020 6px, #a02020 12px); border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+.opp-card-back { position: relative; flex: 0 0 auto; width: 40px; height: 60px; background: repeating-linear-gradient(45deg, #c03030, #c03030 6px, #a02020 6px, #a02020 12px); border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+/* 最上面那张牌背上的手牌数（超过 11 张时就是总数） */
+.back-count {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.45);
+  z-index: 2;
+  pointer-events: none;
+}
 /* 多张牌背居中对齐叠放：每张只露 6px，总宽度不会撑到中间牌堆 */
 .opp-card-back + .opp-card-back { margin-left: -34px; }
-.opp-card-back.overflow { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; font-weight: bold; background: #333; }
 .opponent.current { outline: 3px solid #30d060; background: rgba(48, 208, 96, 0.25); box-shadow: 0 0 15px rgba(48, 208, 96, 0.6); }
 .opponent .name { font-size: 14px; }
 .opponent .hand-count { margin-top: 2px; font-size: 12px; color: #ffd700; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
@@ -515,6 +528,7 @@ input:focus { border-color: #6c7bff; }
   #game-log { display: none; }
   .opp-card-back { width: 25px; height: 38px; }
   .opp-card-back + .opp-card-back { margin-left: -19px; }
+  .back-count { font-size: 11px; }
   .opp-hand { height: 38px; }
   .btn-grab { font-size: 16px; padding: 10px 20px; }
   .spectator-tip { font-size: 12px; padding: 10px 0; }
@@ -645,6 +659,8 @@ input:focus { border-color: #6c7bff; }
   content: ""; position: absolute; left: 28%; right: 28%; top: 24%; bottom: 24%;
   background: rgba(255,255,255,0.9); border-radius: 50%; transform: rotate(-20deg);
 }
+/* 官方牌背中间是白椭圆，数字改用红色才看得清 */
+.opp-card-back.official .back-count { color: #c81018; text-shadow: none; }
 
 /* ===== 设置：齿轮按钮 + 设置面板 ===== */
 .btn-settings { right: 15px; z-index: 101; font-size: 18px; }
