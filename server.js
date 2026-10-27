@@ -71,20 +71,29 @@ function rulesOf(room) {
 
 // ===== 有岁商店 =====
 const SHOP_SIZE = 4;
-// 商品只出带颜色的牌（兑换要求同色，万能牌没有颜色当不了货币）
-function makeShopCard() {
-  const color = COLORS[Math.floor(Math.random() * COLORS.length)];
-  const r = Math.random();
-  if (r < 0.16) return { color, type: T.DRAW_TWO };
-  if (r < 0.30) return { color, type: T.SKIP };
-  if (r < 0.44) return { color, type: T.REVERSE };
-  return { color, type: T.NUMBER, value: Math.floor(Math.random() * 10) };
+
+// 商品直接从牌堆拿牌（所以牌堆真的会少牌）。
+// 万能牌本身没有颜色，就在上架时随机给它定一个"价签颜色"，用同色牌就能买走。
+function makeShopSlot(room) {
+  if (room.drawPile.length === 0) reshuffleIntoDraw(room);
+  const card = room.drawPile.pop() || null;
+  if (!card) return null;
+  const priceColor = isWild(card)
+    ? COLORS[Math.floor(Math.random() * COLORS.length)]
+    : card.color;
+  return { card, priceColor, sold: false };
 }
 
-function buildShop() {
+function buildShop(room) {
   const out = [];
-  for (let i = 0; i < SHOP_SIZE; i++) out.push(makeShopCard());
+  for (let i = 0; i < SHOP_SIZE; i++) out.push(makeShopSlot(room));
   return out;
+}
+
+// 换回合时把售罄的格子补上新货（牌堆不够就空着，等洗牌）
+function refillShop(room) {
+  if (!rulesOf(room).shop || !Array.isArray(room.shop)) return;
+  room.shop = room.shop.map(s => (s && !s.sold) ? s : (makeShopSlot(room) || null));
 }
 
 function isWild(c) { return c.type === T.WILD || c.type === T.WILD_DRAW_FOUR; }
@@ -321,7 +330,7 @@ function startGame(room) {
   room.playPile = [];
   room.discardPile = [];
   room.topCard = null;
-  room.shop = rules.shop ? buildShop() : null;   // 有岁模式：开局刷新 4 件商品
+  room.shop = rules.shop ? buildShop(room) : null;   // 有岁模式：从牌堆抽 4 件商品上架
 
   for (const p of room.players) {
     p.hand = []; p.finished = false; p.rank = null; p.unoCalled = false;
@@ -768,6 +777,8 @@ function advance(room) {
   room.currentIndex = next;
   // ✅ 切换玩家时清理 justDrew
   room.justDrew = false;
+  // 有岁商店：换回合时把售罄的空格补上新货
+  refillShop(room);
 }
 
 // 抢牌功能：任何人（包括刚打出的人自己）抢出与顶牌完全相同的牌

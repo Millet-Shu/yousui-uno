@@ -27,8 +27,9 @@ const $ = id => document.getElementById(id);
 
 // 手牌横向滚动位置：持续记录，避免连续两次刷新时读到 0 把视图拉回最左
 let handScrollLeft = 0;
-// 有岁商店：当前选中的商品格子（null = 没选）
+// 有岁商店：当前选中的商品格子（null = 没选）与付款手牌
 let shopPick = null;
+let shopPayIndex = null;
 const COLOR_NAME = { red: '红', yellow: '黄', green: '绿', blue: '蓝' };
 (() => {
   const el = $('hand-area');
@@ -90,6 +91,13 @@ $('btn-uno').onclick = () => socket.emit('callUno');
 $('btn-grab').onclick = () => socket.emit('grabLead');
 $('btn-skip').onclick = () => socket.emit('skipTurn');
 $('btn-grab-card').onclick = () => socket.emit('grabCard');
+// 商店购买：商品和付款牌都选好后才会显示这个按钮
+$('btn-shop-buy').onclick = () => {
+  if (shopPick === null || shopPayIndex === null) return;
+  socket.emit('buyShopCard', { slot: shopPick, payIndex: shopPayIndex });
+  shopPick = null;
+  shopPayIndex = null;
+};
 $('btn-menu').onclick = () => $('menu-dropdown').classList.toggle('hidden');
 $('toggle-hand-count').onchange = (e) => {
   showHandCount = e.target.checked;
@@ -832,49 +840,101 @@ function paintTopCard(el, card, currentColor) {
 }
 
 // ===== 有岁商店渲染 =====
+// 服务端每格是 { card, priceColor, sold }，这里统一取出来；兼容直接给牌对象的旧结构
+function shopSlotOf(shop, i) {
+  const s = shop[i];
+  if (!s) return { card: null, priceColor: null, sold: true };
+  if (s.card) return { card: s.card, priceColor: s.priceColor || (s.card.color !== 'none' ? s.card.color : null), sold: !!s.sold };
+  return { card: s, priceColor: s.color, sold: false };
+}
+
+// 当前能不能买：自己回合、没在选色/罚牌、对局进行中
+function canBuyShop(state) {
+  const me = state.players.find(p => p.isYou);
+  if (!me || !me.isCurrent) return false;
+  return state.status === 'playing' && !state.paused && !state.wildPending && !(state.pendingDraw > 0);
+}
+
 function renderShop(state) {
   const panel = $('shop-panel');
   const itemsEl = $('shop-items');
-  const shop = Array.isArray(state.shop) ? state.shop : null;
-  const on = !!state.shopEnabled && !!shop && shop.length > 0;
+  const shop = Array.isArray(state.shop) && state.shop.length > 0 ? state.shop : null;
+  const on = !!state.shopEnabled && !!shop;
   panel.classList.toggle('hidden', !on);
-  if (!on) { shopPick = null; return; }
+  if (!on) { shopPick = null; shopPayIndex = null; $('btn-shop-buy').classList.add('hidden'); return; }
 
-  if (shopPick !== null && shopPick >= shop.length) shopPick = null;
+  const isSpectator = !state.players.some(p => p.isYou);
+  const canBuy = !isSpectator && canBuyShop(state);
+  if (!canBuy) { shopPick = null; shopPayIndex = null; }
 
-  const me = state.players.find(p => p.isYou);
-  const isSpectator = !me;
-  const myTurn = !!me && me.isCurrent;
-  // 只有自己回合、且没有待选色/待罚牌时才能买（和服务端校验一致）
-  const canBuy = myTurn && state.status === 'playing' && !state.paused &&
-    !state.wildPending && !(state.pendingDraw > 0);
-  if (!canBuy) shopPick = null;
-
+  if (shopPick !== null) {
+    const slot = shopSlotOf(shop, shopPick);
+    if (!slot.card || slot.sold) shopPick = null;
+  }
   const hand = state.yourHand || [];
+  if (shopPayIndex !== null && !hand[shopPayIndex]) shopPayIndex = null;
+
   itemsEl.innerHTML = '';
-  shop.forEach((c, i) => {
+  shop.forEach((raw, i) => {
+    const slot = shopSlotOf(shop, i);
     const el = document.createElement('div');
-    el.className = 'card shop-card ' + (isOfficialUI() ? 'official ' : '') + (c.color || 'none');
+
+    // 已售罄：留空格子，写斜着的"已售罄"
+    if (slot.sold || !slot.card) {
+      el.className = 'card shop-card sold';
+      el.innerHTML = '<span class="sold-tag">已售罄</span>';
+      itemsEl.appendChild(el);
+      return;
+    }
+
+    const color = slot.card.color === 'none' ? 'none' : slot.card.color;
+    el.className = 'card shop-card ' + (isOfficialUI() ? 'official ' : '') + color;
     if (shopPick === i) el.classList.add('selected');
-    const havePay = hand.some(card => card.color === c.color);
+    const havePay = hand.some(c => c.color === slot.priceColor);
     if (isSpectator || !canBuy || !havePay) el.classList.add('dim');
-    if (isOfficialUI()) el.innerHTML = faceHtml(c);
-    else el.textContent = cardText(c);
+    if (isOfficialUI()) el.innerHTML = faceHtml(slot.card);
+    else el.textContent = cardText(slot.card);
+    // 价签颜色：万能牌本身没颜色，用底部色条标出"要用什么颜色买"
+    const tag = document.createElement('i');
+    tag.className = 'price-tag';
+    tag.style.background = { red: '#e04040', yellow: '#e8d020', green: '#30b050', blue: '#3070d0' }[slot.priceColor] || '#888';
+    el.appendChild(tag);
+
     if (!isSpectator) {
       el.onclick = () => {
         if (!canBuy) return;
         shopPick = (shopPick === i) ? null : i;
-        renderShop(currentGameState || state);
+        // 换了商品后，付款牌颜色如果对不上就清掉
+        if (shopPick !== null && shopPayIndex !== null) {
+          const s2 = shopSlotOf(shop, shopPick);
+          if ((hand[shopPayIndex] || {}).color !== s2.priceColor) shopPayIndex = null;
+        }
+        // 手牌也要跟着重绘，才能把可付款的牌标出来
+        renderGame(currentGameState || state);
       };
     }
     itemsEl.appendChild(el);
   });
 
+  // 购买按钮：商店商品 + 付款手牌都选好了才出现
+  const btn = $('btn-shop-buy');
+  let selectedSlot = shopPick !== null ? shopSlotOf(shop, shopPick) : null;
+  const payCard = shopPayIndex !== null ? hand[shopPayIndex] : null;
+  const ready = canBuy && selectedSlot && selectedSlot.card && payCard && payCard.color === selectedSlot.priceColor;
+  btn.classList.toggle('hidden', !ready);
+  if (ready) btn.textContent = '确认购买';
+
   const hint = $('shop-hint');
-  if (shopPick === null) {
-    hint.textContent = canBuy ? '点商品，再用同色手牌换' : '轮到你时才能买';
+  if (!canBuy) {
+    hint.textContent = isSpectator ? '观战中' : '轮到你时才能买';
+  } else if (selectedSlot && selectedSlot.card && payCard && payCard.color === selectedSlot.priceColor) {
+    hint.textContent = '点下面按钮确认购买';
+  } else if (selectedSlot && selectedSlot.card) {
+    hint.textContent = `再选一张${COLOR_NAME[selectedSlot.priceColor] || ''}色手牌`;
+  } else if (payCard) {
+    hint.textContent = `已选 ${cardText(payCard)}，再点一件${COLOR_NAME[payCard.color] || ''}色商品`;
   } else {
-    hint.textContent = `用一张${COLOR_NAME[shop[shopPick].color] || ''}色手牌支付`;
+    hint.textContent = '先点商品，再点同色手牌';
   }
 }
 
@@ -1152,19 +1212,19 @@ function renderGame(state) {
     if (isOfficialUI()) div.innerHTML = faceHtml(card);
     else div.textContent = cardText(card);
 
-    // 商店里选了商品：这张手牌就是付款牌。同色直接换，不同色提示一句
-    const goods = (shopPick !== null && currentGameState && Array.isArray(currentGameState.shop))
-      ? currentGameState.shop[shopPick] : null;
-    if (goods) {
-      const sameColor = card.color === goods.color;
+    // 商店：选好商品后，这张手牌就是候选付款牌。选中后等"购买"按钮确认
+    if (shopPick !== null && currentGameState && Array.isArray(currentGameState.shop)) {
+      const slot = shopSlotOf(currentGameState.shop, shopPick);
+      const sameColor = !!slot.card && card.color === slot.priceColor;
       div.classList.add(sameColor ? 'payable' : 'unpayable');
+      if (sameColor && shopPayIndex === originalIndex) div.classList.add('selected');
       div.onclick = () => {
-        if (sameColor) {
-          socket.emit('buyShopCard', { slot: shopPick, payIndex: originalIndex });
-          shopPick = null;
-        } else {
-          $('shop-hint').textContent = `这张不行，商店要${COLOR_NAME[goods.color] || ''}色`;
+        if (!sameColor) {
+          $('shop-hint').textContent = `这张不行，商店要${COLOR_NAME[slot.priceColor] || ''}色`;
+          return;
         }
+        shopPayIndex = (shopPayIndex === originalIndex) ? null : originalIndex;
+        renderGame(currentGameState);
       };
       handEl.appendChild(div);
       return;

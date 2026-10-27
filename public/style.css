@@ -338,14 +338,15 @@ input:focus { border-color: #6c7bff; }
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -60%);
+  transform: translate(-50%, -50%);
   display: flex;
-  gap: 18px;
+  flex-direction: column;
   align-items: center;
+  gap: 8px;
 }
 
-/* 牌堆组：牌面 + 下方小标签 */
-.pile-col { display: flex; flex-direction: column; gap: 10px; }
+/* 三个牌堆一排居中：弃牌堆 / 打牌堆 / 牌堆 */
+#pile-row { display: flex; align-items: flex-start; justify-content: center; gap: 14px; }
 .pile-block { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .pile-label { font-size: 10px; color: #9aa6c8; letter-spacing: 1px; line-height: 1.2; }
 
@@ -389,22 +390,52 @@ input:focus { border-color: #6c7bff; }
 .card.shop-card:hover { transform: translateY(-4px); }
 .card.shop-card.selected { box-shadow: 0 0 0 3px #ffd040, 0 8px 20px rgba(0,0,0,.5); transform: translateY(-6px); }
 .card.shop-card.dim { opacity: .45; }
-.shop-hint { font-size: 10px; color: #9aa6c8; }
+/* 已售罄：空格子 + 斜着的"已售罄" */
+.card.shop-card.sold {
+  background: rgba(255,255,255,0.05);
+  border: 1px dashed rgba(255,255,255,0.22);
+  box-shadow: none; cursor: default; opacity: .8;
+}
+.card.shop-card.sold:hover { transform: none; }
+.sold-tag {
+  display: block; width: 100%; text-align: center;
+  transform: rotate(-24deg);
+  font-size: calc(var(--card-w) * 0.3);
+  font-weight: 700; color: rgba(255,255,255,0.55);
+  letter-spacing: 1px; white-space: nowrap;
+}
+/* 价签色条：万能牌没有颜色，用底部色条表示"要用什么颜色买" */
+.price-tag {
+  position: absolute; left: 5px; right: 5px; bottom: 4px;
+  height: 5px; border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.5);
+}
+.shop-hint { font-size: 10px; color: #9aa6c8; text-align: center; }
+
+#action-bar .btn-shop-buy {
+  background: linear-gradient(135deg, #57d76e, #1f9c46);
+  color: #062b12; font-weight: 700;
+}
 
 /* 商店选好后，手牌里同色的标绿、不同色的变暗 */
 .hand-card.payable { box-shadow: 0 0 0 3px #57d76e, 0 6px 16px rgba(0,0,0,.45); }
 .hand-card.unpayable { opacity: .45; }
 
 @media (max-width: 900px) {
-  #center-area { gap: 10px; }
-  #center-area .card { width: calc(var(--card-w) * 0.92); height: calc(var(--card-h) * 0.92); }
-  .shop-panel { padding: 5px 7px; gap: 3px; }
+  /* 中间整块往上挪，给下方的手牌/状态条留位置，也避开左右两侧的对手面板 */
+  #center-area { gap: 6px; transform: translate(-50%, -66%); }
+  #pile-row { gap: 9px; }
+  #center-area .card { width: calc(var(--card-w) * 0.9); height: calc(var(--card-h) * 0.9); }
+  /* 商店牌再小一号，四张并排才不会被两侧对手挡住 */
+  #center-area .card.shop-card { width: calc(var(--card-w) * 0.76); height: calc(var(--card-h) * 0.76); }
+  .shop-panel { padding: 5px 6px; gap: 3px; }
   .shop-title { font-size: 9px; letter-spacing: 0; }
   .shop-items { gap: 4px; }
-  .card.shop-card.official { font-size: calc(var(--card-h) * 0.34); }
-  .card.shop-card:not(.official) { font-size: calc(var(--card-h) * 0.24); }
-  .shop-hint { display: none; }
+  .card.shop-card.official { font-size: calc(var(--card-h) * 0.3); }
+  .card.shop-card:not(.official) { font-size: calc(var(--card-h) * 0.22); }
+  .shop-hint { font-size: 9px; }
   .pile-label { font-size: 9px; }
+  .sold-tag { font-size: calc(var(--card-w) * 0.26); }
 }
 
 /* 万能牌当前颜色提示：四条线围住顶牌来回滑动 */
@@ -452,7 +483,7 @@ input:focus { border-color: #6c7bff; }
 /* 状态条居中：用 left/right + margin auto 居中，避免 transform 影响内部 fixed 菜单按钮 */
 #status-bar {
   position: absolute;
-  bottom: calc(var(--card-h) + 118px);
+  bottom: calc(var(--card-h) + 96px);
   left: 0;
   right: 0;
   margin: 0 auto;
@@ -620,8 +651,9 @@ input:focus { border-color: #6c7bff; }
   #status-bar { font-size: 12px; padding: 6px 12px; }
   /* 手机端：底部留出浏览器工具栏与安全区高度，手牌整体上移 */
   #hand-area { bottom: calc(60px + env(safe-area-inset-bottom, 0px)); max-width: 100vw; padding: 18px 6px 6px; }
-  #action-bar { bottom: calc(162px + env(safe-area-inset-bottom, 0px)); }
-  #status-bar { bottom: calc(202px + env(safe-area-inset-bottom, 0px)); }
+  /* 按钮放到状态条上方；状态条贴近手牌，避免和下方对手面板撞在一起 */
+  #action-bar { bottom: calc(206px + env(safe-area-inset-bottom, 0px)); }
+  #status-bar { bottom: calc(174px + env(safe-area-inset-bottom, 0px)); }
 }
 
 /* 横屏/矮屏（如手机横放）：压缩牌面与底部区域，避免纵向挤成一团 */
@@ -632,7 +664,7 @@ input:focus { border-color: #6c7bff; }
   #status-bar { bottom: calc(var(--card-h) + 72px); }
   .my-rank { bottom: calc(var(--card-h) + 104px); font-size: 16px; padding: 6px 16px; }
   #game-log, #game-spectators { display: none; }
-  #center-area { transform: translate(-50%, -55%); }
+  #center-area { transform: translate(-50%, -58%); }
   .opp-hand { height: 34px; }
   .opp-card-back { width: 24px; height: 34px; }
   .opp-card-back + .opp-card-back { margin-left: -18px; }

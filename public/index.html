@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>有岁 UNO</title>
-<link rel="stylesheet" href="style.css?v=43">
+<link rel="stylesheet" href="style.css?v=45">
 </head>
 <body>
 
@@ -75,9 +75,15 @@
     <div id="opponents"></div>
 
     <!-- 顶牌区 -->
+    <!-- 有岁模式：上面商店，下面一排三个牌堆（弃牌堆 / 打牌堆 / 牌堆）居中 -->
     <div id="center-area">
-      <!-- 左列：弃牌堆（商店付掉的牌）+ 打牌堆（大家打出的牌，顶牌在上面） -->
-      <div class="pile-col">
+      <div id="shop-panel" class="shop-panel hidden">
+        <div class="shop-title">有岁商店</div>
+        <div id="shop-items" class="shop-items"></div>
+        <div id="shop-hint" class="shop-hint">先点商品，再点同色手牌</div>
+      </div>
+
+      <div id="pile-row">
         <div class="pile-block">
           <div id="discard-pile" class="card back"><span id="discard-count">0</span></div>
           <div class="pile-label">弃牌堆</div>
@@ -89,18 +95,10 @@
           </div>
           <div class="pile-label">打牌堆</div>
         </div>
-      </div>
-
-      <!-- 有岁商店：正中间 4 件商品 -->
-      <div id="shop-panel" class="shop-panel hidden">
-        <div class="shop-title">有岁商店</div>
-        <div id="shop-items" class="shop-items"></div>
-        <div id="shop-hint" class="shop-hint">点商品，再用同色手牌换</div>
-      </div>
-
-      <div class="pile-block">
-        <div id="draw-pile" class="card back" title="摸牌"><span id="draw-count">0</span></div>
-        <div class="pile-label">牌堆</div>
+        <div class="pile-block">
+          <div id="draw-pile" class="card back" title="摸牌"><span id="draw-count">0</span></div>
+          <div class="pile-label">牌堆</div>
+        </div>
       </div>
     </div>
 
@@ -157,6 +155,8 @@
     <div id="action-bar">
       <button id="btn-uno" class="btn-uno hidden">喊"有岁"</button>
       <button id="btn-grab-card" class="btn-grab-card hidden">⚡ 抢相同的牌</button>
+      <!-- 商店购买：商品与付款手牌都选好后才出现 -->
+      <button id="btn-shop-buy" class="btn-shop-buy hidden">购买</button>
       <button id="btn-pass" class="btn-pass hidden">不出(摸1张)</button>
       <button id="btn-skip" class="btn-skip hidden">跳过回合</button>
     </div>
@@ -278,6 +278,6 @@
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="game.js?v=59"></script>
+<script src="game.js?v=61"></script>
 </body>
 </html>
