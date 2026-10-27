@@ -492,7 +492,8 @@ input:focus { border-color: #6c7bff; }
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  /* 必须高于暂停遮罩(200)和模式选择层(300)：暂停时点"退出房间"的确认框要能点到 */
+  z-index: 400;
 }
 .modal.hidden { display: none; }
 .modal-content {
