@@ -1085,6 +1085,7 @@ function renderGame(state) {
   // 弃牌堆（商店付掉的牌）单独显示张数，和打牌堆分开
   $('discard-count').textContent = state.discardCount || 0;
   $('discard-pile').classList.toggle('official', isOfficialUI());
+  $('discard-pile').classList.toggle('empty', !(state.discardCount > 0));
   // 没有商店的模式不会产生弃牌，弃牌堆直接藏起来，别占位置
   $('discard-pile').parentElement.classList.toggle('hidden', !state.shopEnabled);
 
