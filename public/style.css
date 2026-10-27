@@ -344,6 +344,53 @@ input:focus { border-color: #6c7bff; }
   align-items: center;
 }
 
+/* 牌堆组：牌面 + 下方小标签 */
+.pile-block { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.pile-label { font-size: 11px; color: #9aa6c8; letter-spacing: 1px; }
+
+/* ===== 有岁商店：正中间 4 件商品 ===== */
+.shop-panel {
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  padding: 9px 12px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 14px;
+  backdrop-filter: blur(6px);
+}
+.shop-title { font-size: 12px; font-weight: 700; color: #ffd040; letter-spacing: 3px; }
+.shop-items { display: flex; gap: 8px; }
+.card.shop-card {
+  width: calc(var(--card-w) * 1.05);
+  height: calc(var(--card-h) * 1.05);
+  border-radius: 8px; position: relative; overflow: hidden;
+  cursor: pointer; transition: transform .15s, box-shadow .15s, opacity .15s;
+}
+.card.shop-card.official { font-size: calc(var(--card-h) * 0.44); }
+/* 非官方卡面（有岁原生风格）用纯色底 */
+.card.shop-card:not(.official).red    { background: #e04040; }
+.card.shop-card:not(.official).yellow { background: #e8d020; color: #333; }
+.card.shop-card:not(.official).green  { background: #30b050; }
+.card.shop-card:not(.official).blue   { background: #3070d0; }
+.card.shop-card:hover { transform: translateY(-4px); }
+.card.shop-card.selected { box-shadow: 0 0 0 3px #ffd040, 0 8px 20px rgba(0,0,0,.5); transform: translateY(-6px); }
+.card.shop-card.dim { opacity: .45; }
+.shop-hint { font-size: 10px; color: #9aa6c8; }
+
+/* 商店选好后，手牌里同色的标绿、不同色的变暗 */
+.hand-card.payable { box-shadow: 0 0 0 3px #57d76e, 0 6px 16px rgba(0,0,0,.45); }
+.hand-card.unpayable { opacity: .45; }
+
+@media (max-width: 900px) {
+  #center-area { gap: 12px; }
+  .shop-panel { padding: 6px 8px; gap: 4px; }
+  .shop-title { font-size: 10px; letter-spacing: 1px; }
+  .shop-items { gap: 5px; }
+  .card.shop-card { width: calc(var(--card-w) * 0.8); height: calc(var(--card-h) * 0.8); }
+  .card.shop-card.official { font-size: calc(var(--card-h) * 0.34); }
+  .shop-hint { display: none; }
+  .pile-label { font-size: 9px; }
+}
+
 /* 万能牌当前颜色提示：四条线围住顶牌来回滑动 */
 .top-card-wrap { position: relative; display: flex; }
 .wild-ring { display: none; position: absolute; inset: -12px; pointer-events: none; }

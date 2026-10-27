@@ -52,6 +52,7 @@ const MODE_RULES = {
     buildDeck: () => createDeck(),
     grabLead: true,       // 是否有"抢先手"阶段
     grabExchange: true,   // 是否允许抢别人打出的相同牌
+    shop: false,          // 是否有商店
   },
   yousui: {
     label: '有岁 UNO',
@@ -59,12 +60,31 @@ const MODE_RULES = {
     buildDeck: () => createDeck(),   // 有岁专属牌后续在这里额外 push
     grabLead: true,
     grabExchange: true,
+    shop: true,           // 有岁模式：正中间的商店，用同色手牌换牌
   },
 };
 
 // 取房间对应模式的规则；模式缺失时按正常版处理
 function rulesOf(room) {
   return MODE_RULES[room && room.mode] || MODE_RULES.normal;
+}
+
+// ===== 有岁商店 =====
+const SHOP_SIZE = 4;
+// 商品只出带颜色的牌（兑换要求同色，万能牌没有颜色当不了货币）
+function makeShopCard() {
+  const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+  const r = Math.random();
+  if (r < 0.16) return { color, type: T.DRAW_TWO };
+  if (r < 0.30) return { color, type: T.SKIP };
+  if (r < 0.44) return { color, type: T.REVERSE };
+  return { color, type: T.NUMBER, value: Math.floor(Math.random() * 10) };
+}
+
+function buildShop() {
+  const out = [];
+  for (let i = 0; i < SHOP_SIZE; i++) out.push(makeShopCard());
+  return out;
 }
 
 function isWild(c) { return c.type === T.WILD || c.type === T.WILD_DRAW_FOUR; }
@@ -156,6 +176,7 @@ function createRoom(maxPlayers = 4) {
     pausedBy: null,
     pausedById: null,
     grabAvailable: null,  // 可以抢牌的状态 { card, playedBy }
+    shop: null,           // 有岁商店：4 张在售牌（只有 yousui 模式才有）
     log: []
   });
   return rooms.get(code);
@@ -220,6 +241,10 @@ function publicRoomState(room, selfPlayer) {
     pendingReport: room.pendingReport,
     myUnoCalled: selfId ? !!room.unoCalled[selfId] : false,
     drawPileCount: room.drawPile.length,
+    discardCount: room.discardPile.length,
+    // 有岁商店：只在有商店的模式、且对局进行中下发
+    shopEnabled: !!rulesOf(room).shop,
+    shop: (rulesOf(room).shop && (room.status === 'playing' || room.status === 'grabbing')) ? (room.shop || null) : null,
     maxPlayers: room.maxPlayers,
     justDrew: !!room.justDrew,
     // 房主身份按玩家 id 判定：socket 重连换了新 id 也不会丢失房主
@@ -280,6 +305,7 @@ function startGame(room) {
   room.drawPile = shuffle(rules.buildDeck());
   room.discardPile = [];
   room.topCard = null;
+  room.shop = rules.shop ? buildShop() : null;   // 有岁模式：开局刷新 4 件商品
 
   for (const p of room.players) {
     p.hand = []; p.finished = false; p.rank = null; p.unoCalled = false;
@@ -785,6 +811,34 @@ function grabCard(room, playerId) {
   if (room.wildPending && isAutoPlayer(room.players[room.currentIndex])) scheduleIfAuto(room, AI_DELAY_EXTRA);
 }
 
+// ===== 有岁商店：用一张同色手牌换走商店里的牌 =====
+// 规则：只能在自己回合买；付款牌必须和商品同色；付款牌进弃牌堆（不影响顶牌与当前颜色）
+function buyShopCard(room, playerId, slot, payIndex) {
+  if (!rulesOf(room).shop) return false;
+  if (room.status !== 'playing' || room.paused) return false;
+  if (!Array.isArray(room.shop)) return false;
+  const player = room.players[room.currentIndex];
+  if (!player || player.id !== playerId) return false;   // 只有当前回合的玩家能买
+  if (room.wildPending || room.pendingDraw > 0) return false;  // 先处理选色/罚牌，别拿商店躲罚
+
+  slot = parseInt(slot, 10);
+  payIndex = parseInt(payIndex, 10);
+  if (!(slot >= 0 && slot < room.shop.length)) return false;
+  const goods = room.shop[slot];
+  const pay = player.hand[payIndex];
+  if (!goods || !pay) return false;
+  if (pay.color === 'none' || pay.color !== goods.color) return false;  // 万能牌不能当货币
+
+  player.hand.splice(payIndex, 1);
+  room.discardPile.push(pay);       // 货币牌进弃牌堆
+  player.hand.push(goods);          // 商品进手牌
+  room.shop[slot] = makeShopCard(); // 卖掉的格子补一件新货
+  addLog(room, `${player.name} 用 ${cardName(pay)} 在商店换走了 ${cardName(goods)}`);
+  broadcastRoom(room);
+  scheduleIfAuto(room);
+  return true;
+}
+
 // 只剩 1 人时不该继续"单人打牌"：直接结束对局，等房主重开
 // （离开/被踢都会走到这里，避免人走光了还卡在一个人的对局里）
 function abortIfTooFewPlayers(room) {
@@ -1047,6 +1101,7 @@ io.on('connection', (socket) => {
     room.aiTurnPending = false;
     room.aiTurnSeq = null;
     room.grabAvailable = null;
+    room.shop = null;       // 结束对局回到房间：商店下架
     room.paused = false;
     room.pausedBy = null;
     room.pausedById = null;
@@ -1365,6 +1420,10 @@ io.on('connection', (socket) => {
 
   socket.on('grabCard', () => {
     if (currentRoom) grabCard(currentRoom, currentPlayerId);
+  });
+
+  socket.on('buyShopCard', ({ slot, payIndex } = {}) => {
+    if (currentRoom) buyShopCard(currentRoom, currentPlayerId, slot, payIndex);
   });
 
   socket.on('callUno', () => {
