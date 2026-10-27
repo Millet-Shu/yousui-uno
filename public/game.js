@@ -894,11 +894,14 @@ function renderShop(state) {
     if (isSpectator || !canBuy || !havePay) el.classList.add('dim');
     if (isOfficialUI()) el.innerHTML = faceHtml(slot.card);
     else el.textContent = cardText(slot.card);
-    // 价签颜色：万能牌本身没颜色，用底部色条标出"要用什么颜色买"
-    const tag = document.createElement('i');
-    tag.className = 'price-tag';
-    tag.style.background = { red: '#e04040', yellow: '#e8d020', green: '#30b050', blue: '#3070d0' }[slot.priceColor] || '#888';
-    el.appendChild(tag);
+    // 只有万能牌需要提示"要用什么颜色买"：右上角点一个小色点（彩色牌本身就能看出颜色）
+    if (slot.card.color === 'none') {
+      const tag = document.createElement('i');
+      tag.className = 'price-dot';
+      tag.style.background = { red: '#e04040', yellow: '#e8d020', green: '#30b050', blue: '#3070d0' }[slot.priceColor] || '#888';
+      tag.title = '用' + (COLOR_NAME[slot.priceColor] || '') + '色买';
+      el.appendChild(tag);
+    }
 
     if (!isSpectator) {
       el.onclick = () => {

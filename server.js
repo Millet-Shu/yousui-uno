@@ -853,14 +853,15 @@ function buyShopCard(room, playerId, slot, payIndex) {
   if (!(slot >= 0 && slot < room.shop.length)) return false;
   const goods = room.shop[slot];
   const pay = player.hand[payIndex];
-  if (!goods || !pay) return false;
-  if (pay.color === 'none' || pay.color !== goods.color) return false;  // 万能牌不能当货币
+  if (!goods || goods.sold || !goods.card) return false;    // 已售罄的格子不能买
+  if (!pay) return false;
+  if (pay.color === 'none' || pay.color !== goods.priceColor) return false;  // 只能同色付款，万能牌不能当货币
 
   player.hand.splice(payIndex, 1);
-  room.discardPile.push(pay);       // 货币牌进弃牌堆
-  player.hand.push(goods);          // 商品进手牌
-  room.shop[slot] = makeShopCard(); // 卖掉的格子补一件新货
-  addLog(room, `${player.name} 用 ${cardName(pay)} 在商店换走了 ${cardName(goods)}`);
+  room.discardPile.push(pay);        // 手上的付款牌进弃牌堆
+  player.hand.push(goods.card);      // 买到的牌进手牌
+  room.shop[slot] = { sold: true };  // 卖掉的位置留空，换回合再补货
+  addLog(room, `${player.name} 用 ${cardName(pay)} 在商店换走了 ${cardName(goods.card)}`);
   broadcastRoom(room);
   scheduleIfAuto(room);
   return true;
