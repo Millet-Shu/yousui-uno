@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>有岁 UNO</title>
-<link rel="stylesheet" href="style.css?v=41">
+<link rel="stylesheet" href="style.css?v=42">
 </head>
 <body>
 
@@ -76,12 +76,19 @@
 
     <!-- 顶牌区 -->
     <div id="center-area">
-      <div id="pile-discard" class="pile-block">
-      <div id="top-card-wrap" class="top-card-wrap">
-        <div id="top-card" class="card"><span id="top-label">?</span></div>
-        <span class="wild-ring" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-      </div>
-        <div class="pile-label">弃牌堆</div>
+      <!-- 左列：弃牌堆（商店付掉的牌）+ 打牌堆（大家打出的牌，顶牌在上面） -->
+      <div class="pile-col">
+        <div class="pile-block">
+          <div id="discard-pile" class="pile-card back"><span id="discard-count">0</span></div>
+          <div class="pile-label">弃牌堆</div>
+        </div>
+        <div class="pile-block">
+          <div id="top-card-wrap" class="top-card-wrap">
+            <div id="top-card" class="card"><span id="top-label">?</span></div>
+            <span class="wild-ring" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          </div>
+          <div class="pile-label">打牌堆</div>
+        </div>
       </div>
 
       <!-- 有岁商店：正中间 4 件商品 -->
@@ -91,7 +98,7 @@
         <div id="shop-hint" class="shop-hint">点商品，再用同色手牌换</div>
       </div>
 
-      <div id="pile-draw" class="pile-block">
+      <div class="pile-block">
         <div id="draw-pile" class="card back" title="摸牌"><span id="draw-count">0</span></div>
         <div class="pile-label">牌堆</div>
       </div>
@@ -271,6 +278,6 @@
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="game.js?v=57"></script>
+<script src="game.js?v=58"></script>
 </body>
 </html>

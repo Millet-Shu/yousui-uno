@@ -340,32 +340,57 @@ input:focus { border-color: #6c7bff; }
   left: 50%;
   transform: translate(-50%, -60%);
   display: flex;
-  gap: 30px;
+  gap: 18px;
   align-items: center;
 }
 
 /* 牌堆组：牌面 + 下方小标签 */
-.pile-block { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.pile-label { font-size: 11px; color: #9aa6c8; letter-spacing: 1px; }
+.pile-col { display: flex; flex-direction: column; gap: 10px; }
+.pile-block { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.pile-label { font-size: 10px; color: #9aa6c8; letter-spacing: 1px; line-height: 1.2; }
+
+/* 中间所有牌统一尺寸：原来顶牌/牌堆是 1.3 倍、商店是 1.05 倍，一大一小还会挤出屏幕 */
+#center-area .card {
+  width: calc(var(--card-w) * 1.1);
+  height: calc(var(--card-h) * 1.1);
+  flex: 0 0 auto;
+}
+
+/* 弃牌堆：牌背朝上，只显示张数（和打牌堆分开，弃掉的牌不会盖住顶牌） */
+.pile-card {
+  display: flex; align-items: center; justify-content: center;
+  width: calc(var(--card-w) * 0.92);
+  height: calc(var(--card-h) * 0.92);
+  border-radius: 9px; color: #fff; font-weight: 700;
+  font-size: calc(var(--card-h) * 0.24);
+  box-shadow: 0 4px 12px rgba(0,0,0,.4);
+}
+.pile-card.back { background: repeating-linear-gradient(45deg, #b62a2a, #b62a2a 7px, #8f1c1c 7px, #8f1c1c 14px); }
+/* 官方牌背：和摸牌堆一致的红色椭圆牌背 */
+.pile-card.back.official { background: linear-gradient(160deg, #c81018, #8a0a12); border: 2px solid #fff; position: relative; overflow: hidden; }
+.pile-card.back.official::after {
+  content: ""; position: absolute; left: 18%; right: 18%; top: 22%; bottom: 22%;
+  background: rgba(255,255,255,0.9); border-radius: 50%; transform: rotate(-20deg);
+}
+.pile-card.back.official #discard-count { position: relative; z-index: 2; color: #c81018; }
 
 /* ===== 有岁商店：正中间 4 件商品 ===== */
 .shop-panel {
-  display: flex; flex-direction: column; align-items: center; gap: 7px;
-  padding: 9px 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 8px 10px;
   background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.16);
   border-radius: 14px;
   backdrop-filter: blur(6px);
 }
-.shop-title { font-size: 12px; font-weight: 700; color: #ffd040; letter-spacing: 3px; }
-.shop-items { display: flex; gap: 8px; }
+.shop-title { font-size: 11px; font-weight: 700; color: #ffd040; letter-spacing: 2px; }
+.shop-items { display: flex; gap: 6px; }
 .card.shop-card {
-  width: calc(var(--card-w) * 1.05);
-  height: calc(var(--card-h) * 1.05);
   border-radius: 8px; position: relative; overflow: hidden;
   cursor: pointer; transition: transform .15s, box-shadow .15s, opacity .15s;
 }
-.card.shop-card.official { font-size: calc(var(--card-h) * 0.44); }
+.card.shop-card.official { font-size: calc(var(--card-h) * 0.42); }
+.card.shop-card:not(.official) { font-size: calc(var(--card-h) * 0.3); }
 /* 非官方卡面（有岁原生风格）用纯色底 */
 .card.shop-card:not(.official).red    { background: #e04040; }
 .card.shop-card:not(.official).yellow { background: #e8d020; color: #333; }
@@ -381,12 +406,14 @@ input:focus { border-color: #6c7bff; }
 .hand-card.unpayable { opacity: .45; }
 
 @media (max-width: 900px) {
-  #center-area { gap: 12px; }
-  .shop-panel { padding: 6px 8px; gap: 4px; }
-  .shop-title { font-size: 10px; letter-spacing: 1px; }
-  .shop-items { gap: 5px; }
-  .card.shop-card { width: calc(var(--card-w) * 0.8); height: calc(var(--card-h) * 0.8); }
+  #center-area { gap: 10px; }
+  #center-area .card { width: calc(var(--card-w) * 0.92); height: calc(var(--card-h) * 0.92); }
+  .pile-card { width: calc(var(--card-w) * 0.78); height: calc(var(--card-h) * 0.78); font-size: calc(var(--card-h) * 0.2); }
+  .shop-panel { padding: 5px 7px; gap: 3px; }
+  .shop-title { font-size: 9px; letter-spacing: 0; }
+  .shop-items { gap: 4px; }
   .card.shop-card.official { font-size: calc(var(--card-h) * 0.34); }
+  .card.shop-card:not(.official) { font-size: calc(var(--card-h) * 0.24); }
   .shop-hint { display: none; }
   .pile-label { font-size: 9px; }
 }

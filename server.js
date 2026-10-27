@@ -154,7 +154,8 @@ function createRoom(maxPlayers = 4) {
     players: [],
     spectators: [null, null, null, null, null],
     drawPile: [],
-    discardPile: [],
+    playPile: [],      // 打牌堆：大家打出的牌（topCard 是它最上面那张）
+    discardPile: [],   // 弃牌堆：商店付款等被弃掉的牌，不再混进打牌堆
     topCard: null,
     currentColor: 'red',
     currentIndex: 0,
@@ -241,6 +242,7 @@ function publicRoomState(room, selfPlayer) {
     pendingReport: room.pendingReport,
     myUnoCalled: selfId ? !!room.unoCalled[selfId] : false,
     drawPileCount: room.drawPile.length,
+    playCount: room.playPile.length,
     discardCount: room.discardPile.length,
     // 有岁商店：只在有商店的模式、且对局进行中下发
     shopEnabled: !!rulesOf(room).shop,
@@ -285,16 +287,29 @@ function normalizeCurrentIndex(room) {
 function drawCards(room, n) {
   const out = [];
   for (let i = 0; i < n; i++) {
-    if (room.drawPile.length === 0) {
-      if (room.discardPile.length <= 1) break;
-      const top = room.discardPile.pop();
-      room.drawPile = shuffle(room.discardPile);
-      room.discardPile = [top];
-    }
+    if (room.drawPile.length === 0) reshuffleIntoDraw(room);
     if (room.drawPile.length === 0) break;
     out.push(room.drawPile.pop());
   }
   return out;
+}
+
+// 牌堆摸空了怎么补：
+// 1) 先把弃牌堆（商店付掉的牌等）整堆洗回牌堆
+// 2) 还不够，就把打牌堆除最上面那张外的牌洗回牌堆（顶牌必须留在场上）
+function reshuffleIntoDraw(room) {
+  if (room.discardPile.length > 0) {
+    room.drawPile = shuffle(room.drawPile.concat(room.discardPile));
+    room.discardPile = [];
+    addLog(room, '弃牌堆洗回牌堆');
+  }
+  if (room.drawPile.length > 0) return;
+  if (room.playPile.length > 1) {
+    const top = room.playPile.pop();
+    room.drawPile = shuffle(room.playPile);
+    room.playPile = [top];
+    addLog(room, '打牌堆除顶牌外洗回牌堆');
+  }
 }
 
 function startGame(room) {
@@ -303,6 +318,7 @@ function startGame(room) {
   room.gameId = (room.gameId || 0) + 1;   // 新的一局：旧局的早起手定时器作废
   room.turnSeq = (room.turnSeq || 0) + 1; // 新的一局：旧的回合定时器作废
   room.drawPile = shuffle(rules.buildDeck());
+  room.playPile = [];
   room.discardPile = [];
   room.topCard = null;
   room.shop = rules.shop ? buildShop() : null;   // 有岁模式：开局刷新 4 件商品
@@ -369,7 +385,7 @@ function grabLead(room, playerId) {
     guard++;
   }
 
-  room.discardPile.push(starter);
+  room.playPile.push(starter);
   room.topCard = starter;
   room.currentColor = starter.color;
   room.status = 'playing';
@@ -445,7 +461,7 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   room.unoBadge = null;   // 进入下一回合，喊牌飘带随之消失
 
   player.hand.splice(cardIndex, 1);
-  room.discardPile.push(card);
+  room.playPile.push(card);
   room.topCard = card;
   room.justDrew = false;
 
@@ -782,7 +798,7 @@ function grabCard(room, playerId) {
   room.unoBadge = null;   // 进入下一回合，喊牌飘带随之消失
 
   grabber.hand.splice(cand.cardIndex, 1);
-  room.discardPile.push(card);
+  room.playPile.push(card);
   room.topCard = card;
   room.justDrew = false;
 
@@ -1089,6 +1105,7 @@ io.on('connection', (socket) => {
     room.status = 'waiting';
     room.players.forEach(p => { p.hand = []; p.finished = false; p.rank = null; });
     room.drawPile = [];
+    room.playPile = [];
     room.discardPile = [];
     room.topCard = null;
     room.pendingDraw = 0;
