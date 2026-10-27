@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>有岁 UNO</title>
-<link rel="stylesheet" href="style.css?v=37">
+<link rel="stylesheet" href="style.css?v=38">
 </head>
 <body>
 
@@ -61,6 +61,8 @@
   <div id="game-board">
     <!-- 左上角房间码 -->
     <div id="game-room-code">房间号：<span id="game-code">----</span></div>
+    <!-- 左上角：自己的名字，打牌时也知道自己是哪个名字 -->
+    <div id="game-my-name" class="game-my-name hidden"></div>
     <div id="game-mode-chip" class="game-mode-chip hidden"></div>
 
     <!-- 左侧观战席 -->
@@ -255,6 +257,6 @@
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="game.js?v=55"></script>
+<script src="game.js?v=56"></script>
 </body>
 </html>

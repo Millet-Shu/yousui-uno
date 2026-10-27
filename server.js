@@ -514,6 +514,11 @@ function closeGrabWindow(room) {
   room.turnSeq = (room.turnSeq || 0) + 1;
 }
 
+// AI 是否愿意抢这张牌：罚牌（+2/+4）不抢，留给自己的回合继续叠加罚牌
+function aiWantsGrab(card) {
+  return card.type !== T.DRAW_TWO && card.type !== T.WILD_DRAW_FOUR;
+}
+
 // 打开抢牌窗口：手上有和顶牌完全相同的牌即可抢（含出牌者自己，可连出）
 function openGrabWindow(room, playedBy) {
   room.grabAvailable = null;
@@ -536,17 +541,31 @@ function openGrabWindow(room, playedBy) {
   }
 
   if (candidates.length > 0) {
+    // AI（含离线代理）自动抢牌；但罚牌（+2/+4）一律不抢：
+    // 抢牌会把已经累加的 pendingDraw 清零再重置成本张牌的罚数，
+    // 等于替后面的人解围。留到自己回合正常打出，罚牌才能继续往上叠。
+    const aiGrabbers = candidates
+      .map(c => room.players.find(x => x.id === c.playerId))
+      .filter(p => p && isAutoPlayer(p) && aiWantsGrab(lastCard));
+    const hasHumanCandidate = candidates.some(c => {
+      const p = room.players.find(x => x.id === c.playerId);
+      return p && !isAutoPlayer(p);
+    });
+
+    // 只有 AI 候选、且它们都不想抢 → 不用开窗，直接回到正常回合（否则白等 3 秒）
+    if (!hasHumanCandidate && aiGrabbers.length === 0) {
+      broadcastRoom(room);
+      scheduleIfAuto(room);
+      return;
+    }
+
     room.grabAvailable = { card: lastCard, playedBy: playedBy.name, candidates };
-    // AI（含离线代理）自动抢牌
-    for (const cand of candidates) {
-      const p = room.players.find(x => x.id === cand.playerId);
-      if (p && isAutoPlayer(p)) {
-        setTimeout(() => {
-          if (room.grabAvailable && room.grabAvailable.candidates.some(c => c.playerId === p.id)) {
-            grabCard(room, p.id);
-          }
-        }, 1000 + Math.random() * 900);
-      }
+    for (const p of aiGrabbers) {
+      setTimeout(() => {
+        if (room.grabAvailable && room.grabAvailable.candidates.some(c => c.playerId === p.id)) {
+          grabCard(room, p.id);
+        }
+      }, 1000 + Math.random() * 900);
     }
     // 3 秒内没人抢就自动关闭，防止卡住游戏
     setTimeout(() => {

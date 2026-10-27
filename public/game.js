@@ -970,6 +970,14 @@ function renderGame(state) {
 
   // 我的名次
   const me = state.players.find(p => p.isYou);
+  // 左上角显示自己的名字（观战者不显示）
+  const myNameEl = $('game-my-name');
+  if (me && !isSpectator) {
+    myNameEl.textContent = '👤 ' + me.name;
+    myNameEl.classList.remove('hidden');
+  } else {
+    myNameEl.classList.add('hidden');
+  }
   if (me && me.finished) {
     $('my-rank').textContent = `🏆 第 ${me.rank} 名`;
     $('my-rank').classList.remove('hidden');

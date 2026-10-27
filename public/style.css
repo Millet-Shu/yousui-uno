@@ -254,6 +254,17 @@ input:focus { border-color: #6c7bff; }
 .mode-card-desc { font-size: 13px; line-height: 1.9; color: rgba(255,255,255,0.88); }
 .mode-cancel { flex: 0 0 auto; max-width: 140px; }
 #game-room-code { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: bold; color: #ffd700; background: rgba(0,0,0,0.3); padding: 6px 16px; border-radius: 8px; z-index: 10; }
+/* 左上角自己的名字：不会被任何对手/观战席面板挡住 */
+.game-my-name {
+  position: absolute; top: 15px; left: 16px;
+  max-width: 34vw; padding: 6px 14px;
+  font-size: 15px; font-weight: 600; color: #dfe6ff;
+  background: rgba(0,0,0,0.34);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  z-index: 10;
+}
 .hand-card.selected { transform: translateY(-10px); box-shadow: 0 0 15px rgba(255,255,255,0.5); z-index: 2; }
 .hand-card.grabbable { cursor: pointer; box-shadow: 0 0 10px 3px #ffd700; animation: grabPulse 0.8s infinite; transform: translateY(-6px); z-index: 2; }
 @keyframes grabPulse { 50% { box-shadow: 0 0 18px 6px #ffd700; } }
@@ -565,6 +576,7 @@ input:focus { border-color: #6c7bff; }
 /* 窄屏/手机：观战席移到左上角横排（放在房间号下方），避免被西侧对手的卡牌挡住 */
 @media (max-width: 900px) {
   #game-room-code { font-size: 14px; padding: 4px 12px; top: 10px; }
+  .game-my-name { top: 10px; left: 6px; max-width: 26vw; font-size: 12px; padding: 4px 9px; }
   #game-spectators {
     left: 6px; top: 48px; transform: none;
     flex-direction: row; align-items: center; gap: 4px;
