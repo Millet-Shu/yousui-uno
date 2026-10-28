@@ -357,13 +357,36 @@ input:focus { border-color: #6c7bff; }
   flex: 0 0 auto;
 }
 
-/* 弃牌堆：和打牌堆/摸牌堆完全同一尺寸（都走 #center-area .card），牌背朝上只显示张数 */
-#discard-pile { cursor: default; }
+/* 弃牌堆：正面展示最上面一张（商店付款 / 刷新换下的旧货），后面的牌用错位卡边暗示厚度 */
+#discard-wrap { position: relative; }
+#discard-wrap::before,
+#discard-wrap::after {
+  content: ""; position: absolute; inset: 0; display: none;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.16);
+}
+#discard-wrap.has-cards::before { display: block; transform: translate(-3px, 3px); }
+#discard-wrap.has-cards::after  { display: block; transform: translate(-6px, 6px); opacity: .6; }
+#discard-pile { position: relative; z-index: 2; cursor: default; }
 #discard-pile:hover { transform: none; }
-/* 弃牌堆为空时淡出，表示"暂时没牌" */
-#discard-pile.empty { opacity: .3; }
-#discard-count { position: relative; z-index: 2; font-size: calc(var(--card-h) * 0.26); font-weight: 700; }
-#discard-pile.official #discard-count { color: #c81018; }
+/* 弃牌堆为空：虚线占位，跟"有牌"区分开（覆盖上面的纯色底，所以要 !important） */
+#discard-pile.empty {
+  background: rgba(255,255,255,0.05) !important;
+  border: 2px dashed rgba(255,255,255,0.22);
+  box-shadow: none;
+  color: rgba(255,255,255,0.4);
+}
+/* 张数做成右下角小角标，不再压住牌面 */
+#discard-count.pile-badge {
+  position: absolute; right: -7px; bottom: -7px; z-index: 3;
+  min-width: 20px; padding: 1px 6px;
+  border-radius: 11px;
+  background: rgba(8,12,26,0.92);
+  border: 1px solid rgba(255,255,255,0.28);
+  color: #ffd040; font-size: 11px; font-weight: 700;
+  line-height: 1.5; text-align: center;
+}
 
 /* ===== 有岁商店：正中间 4 件商品 ===== */
 .shop-panel {
@@ -392,12 +415,7 @@ input:focus { border-color: #6c7bff; }
 }
 .card.shop-card.official { font-size: calc(var(--card-h) * 0.42); }
 .card.shop-card:not(.official) { font-size: calc(var(--card-h) * 0.3); }
-/* 非官方卡面（有岁原生风格）用纯色底 */
-.card.shop-card:not(.official).red    { background: #e04040; }
-.card.shop-card:not(.official).yellow { background: #e8d020; color: #333; }
-.card.shop-card:not(.official).green  { background: #30b050; }
-.card.shop-card:not(.official).blue   { background: #3070d0; }
-.card.shop-card:not(.official).none   { background: #333; }
+/* 非官方卡面的纯色底统一写在"顶牌 / 弃牌堆 / 商店"共用那一组里，见 #top-card 附近的规则 */
 .card.shop-card:hover { transform: translateY(-4px); }
 .card.shop-card.selected { box-shadow: 0 0 0 3px #ffd040, 0 8px 20px rgba(0,0,0,.5); transform: translateY(-6px); }
 .card.shop-card.dim { opacity: .45; }
@@ -488,12 +506,13 @@ input:focus { border-color: #6c7bff; }
 }
 .card.back:hover { transform: scale(1.05); }
 
-#top-card { background: #555; }
-#top-card.red { background: #e04040; }
-#top-card.yellow { background: #e8d020; color: #333; }
-#top-card.green { background: #30b050; }
-#top-card.blue { background: #3070d0; }
-#top-card.none { background: #333; }
+/* 非官方卡面（有岁原生风格）用纯色底：打牌堆顶牌 / 弃牌堆 / 商店商品共用同一套颜色 */
+#top-card, #discard-pile { background: #555; }
+#top-card.red, #discard-pile.red, .card.shop-card:not(.official).red       { background: #e04040; }
+#top-card.yellow, #discard-pile.yellow, .card.shop-card:not(.official).yellow { background: #e8d020; color: #333; }
+#top-card.green, #discard-pile.green, .card.shop-card:not(.official).green  { background: #30b050; }
+#top-card.blue, #discard-pile.blue, .card.shop-card:not(.official).blue     { background: #3070d0; }
+#top-card.none, #discard-pile.none, #discard-pile.wild, .card.shop-card:not(.official).none { background: #333; }
 #top-card.wild { background: #333; }
 
 /* 状态条居中：用 left/right + margin auto 居中，避免 transform 影响内部 fixed 菜单按钮 */
@@ -706,7 +725,7 @@ input:focus { border-color: #6c7bff; }
 
 /* ===== 官方 UNO 卡面（仅"正常版"启用，有岁版保留原简洁样式） ===== */
 /* 官方卡：白色卡片边 + 内嵌彩色牌面（参考实物牌） */
-.hand-card.official, .card.official, #top-card.official { position: relative; overflow: hidden; background: #fff; }
+.hand-card.official, .card.official, #top-card.official, #discard-pile.official { position: relative; overflow: hidden; background: #fff; }
 .hand-card.official.red,    .card.official.red    { --face: #c8282e; --body: linear-gradient(160deg, #e8453f, #bf1f28); }
 .hand-card.official.yellow, .card.official.yellow { --face: #c9a600; --body: linear-gradient(160deg, #f2d21c, #d0ad00); }
 .hand-card.official.green,  .card.official.green  { --face: #127a33; --body: linear-gradient(160deg, #38b95a, #127a33); }

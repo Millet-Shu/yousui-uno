@@ -255,6 +255,8 @@ function publicRoomState(room, selfPlayer) {
     drawPileCount: room.drawPile.length,
     playCount: room.playPile.length,
     discardCount: room.discardPile.length,
+    // 弃牌堆最上面那张（正面展示用）；没有弃牌时为 null
+    discardTop: room.discardPile.length > 0 ? room.discardPile[room.discardPile.length - 1] : null,
     // 有岁商店：只在有商店的模式、且对局进行中下发
     shopEnabled: !!rulesOf(room).shop,
     shop: (rulesOf(room).shop && (room.status === 'playing' || room.status === 'grabbing')) ? (room.shop || null) : null,
@@ -866,6 +868,10 @@ function buyShopCard(room, playerId, slot, payIndex) {
   player.hand.push(goods.card);      // 买到的牌进手牌
   room.shop[slot] = { sold: true };  // 卖掉的位置留空，四件都卖光才补货
   addLog(room, `${player.name} 用 ${cardName(pay)} 在商店换走了 ${cardName(goods.card)}`);
+
+  // 买牌也是"本回合已行动"：上一张牌的举报窗口关闭，喊牌飘带收起
+  room.pendingReport = null;
+  room.unoBadge = null;
 
   // 买牌直接过回合：既然来买，说明手上没有能出的牌
   closeGrabWindow(room);

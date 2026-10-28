@@ -829,21 +829,22 @@ function faceHtml(card) {
     `<span class="cf-tl">${sym}</span><span class="cf-br">${sym}</span></span>`;
 }
 
-// 顶牌绘制：两种风格共用。官方模式下不用 #top-label，避免 innerHTML 覆盖后取不到元素
-function paintTopCard(el, card, currentColor) {
+// 绘制一张正面朝上的牌：两种风格共用。
+// 标签用 class 而不是 id，这样"打牌堆 / 弃牌堆"能各自画各自的牌，不会互相覆盖
+function paintTopCard(el, card) {
   const official = isOfficialUI();
   if (!card) {
     el.className = 'card' + (official ? ' official' : '');
     el.style.boxShadow = 'none';
-    el.innerHTML = '<span id="top-label">?</span>';
+    el.innerHTML = '<span class="card-label">?</span>';
     return;
   }
   el.className = 'card ' + (card.color === 'none' ? 'wild' : card.color) + (official ? ' official' : '');
   // 万能牌不再用纯色外框表示颜色，统一改成边框上的彩色流动条（#top-card-wrap .wild-ring）
   el.style.boxShadow = 'none';
   if (official) { el.innerHTML = faceHtml(card); return; }
-  el.innerHTML = '<span id="top-label"></span>';
-  $('top-label').textContent = cardText(card);
+  el.innerHTML = '<span class="card-label"></span>';
+  el.querySelector('.card-label').textContent = cardText(card);
 }
 
 // ===== 有岁商店渲染 =====
@@ -976,7 +977,7 @@ function renderGame(state) {
   $('game-board').classList.toggle('official-ui', isOfficialUI());
 
   // 顶牌
-  paintTopCard($('top-card'), state.topCard, state.currentColor);
+  paintTopCard($('top-card'), state.topCard);
 
   // 万能牌/加四牌：用当前颜色的流动线框围住顶牌，避免看不出选了什么颜色
   // 两种卡面风格都用同一套流动条，不再用纯色外边框
@@ -1169,12 +1170,16 @@ function renderGame(state) {
   }
   $('game-code').textContent = state.code || '----';
   $('draw-count').textContent = state.drawPileCount || 0;
-  // 弃牌堆（商店付掉的牌）单独显示张数，和打牌堆分开
-  $('discard-count').textContent = state.discardCount || 0;
-  $('discard-pile').classList.toggle('official', isOfficialUI());
-  $('discard-pile').classList.toggle('empty', !(state.discardCount > 0));
+  // 弃牌堆（商店付掉的牌、刷新换下的旧货）：正面展示最上面一张，张数做成右下角小角标
+  const discardTop = state.discardTop || null;
+  paintTopCard($('discard-pile'), discardTop);
+  $('discard-pile').classList.toggle('empty', !discardTop);
+  $('discard-wrap').classList.toggle('has-cards', !!discardTop);
+  const discardBadge = $('discard-count');
+  discardBadge.textContent = state.discardCount || 0;
+  discardBadge.classList.toggle('hidden', !discardTop);
   // 没有商店的模式不会产生弃牌，弃牌堆直接藏起来，别占位置
-  $('discard-pile').parentElement.classList.toggle('hidden', !state.shopEnabled);
+  $('discard-block').classList.toggle('hidden', !state.shopEnabled);
 
   // 暂停遮罩
   const pauseOverlay = $('pause-overlay');
