@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>有岁 UNO</title>
-<link rel="stylesheet" href="style.css?v=51">
+<link rel="stylesheet" href="style.css?v=52">
 </head>
 <body>
 
@@ -247,6 +247,21 @@
         <span id="sfx-volume-value" class="volume-value">60%</span>
       </div>
 
+      <h4 class="settings-title">对局 · 房主设定</h4>
+      <div class="settings-row">
+        <span>回合时限</span>
+        <select id="turn-limit-select" class="turn-select">
+          <option value="0">不限时</option>
+          <option value="10">10 秒</option>
+          <option value="15">15 秒</option>
+          <option value="20">20 秒</option>
+          <option value="30">30 秒</option>
+          <option value="45">45 秒</option>
+          <option value="60">60 秒</option>
+        </select>
+      </div>
+      <div id="turn-limit-note" class="settings-note">超时会自动摸牌并跳过</div>
+
       <h4 class="settings-title">游戏规则 · 正常版 UNO</h4>
       <div class="rules-scroll">
         <h5>开局</h5>
@@ -286,6 +301,6 @@
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="game.js?v=67"></script>
+<script src="game.js?v=68"></script>
 </body>
 </html>

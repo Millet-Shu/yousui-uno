@@ -191,6 +191,7 @@ function createRoom(maxPlayers = 4) {
     turnRemain: null,            // 暂停时记下的剩余毫秒，恢复后接着走
     turnTimer: null,             // 回合计时器句柄
     turnClockId: 0,              // 计时器版本号：每次重新起表自增，前端据此重置倒计时显示
+    turnLimit: TURN_LIMIT,       // 房主可改的回合时限（0 = 不限时）
     gameId: 0,                   // 局次：每次开局自增，避免上一局的抢先手定时器串到新局
     paused: false,
     pausedBy: null,
@@ -261,7 +262,7 @@ function publicRoomState(room, selfPlayer) {
     // 回合计时：只在对局进行中且没暂停时给剩余毫秒，前端用本地时间倒计时
     turnRemain: (room.status === 'playing' && !room.paused && room.turnDeadline)
       ? Math.max(0, room.turnDeadline - Date.now()) : null,
-    turnLimit: TURN_LIMIT,
+    turnLimit: turnLimitOf(room),
     turnClockId: room.turnClockId || 0,
     turnPlayerId: (room.status === 'playing' && room.players[room.currentIndex])
       ? room.players[room.currentIndex].id : null,
@@ -812,6 +813,12 @@ function ensureOwner(room) {
   }
 }
 
+// 房主设定的回合时限（毫秒）；0 = 不限时
+function turnLimitOf(room) {
+  const v = room && room.turnLimit;
+  return (v === undefined || v === null) ? TURN_LIMIT : Math.max(0, v | 0);
+}
+
 // 停表：暂停/结束时调用。顺手记下还剩多少毫秒，恢复时接着走
 function stopTurnClock(room) {
   if (room.turnTimer) { clearTimeout(room.turnTimer); room.turnTimer = null; }
@@ -827,7 +834,13 @@ function startTurnClock(room, remainMs) {
     room.turnRemain = null;
     return;
   }
-  const ms = Math.max(1000, (remainMs === undefined || remainMs === null) ? TURN_LIMIT : remainMs);
+  const limit = turnLimitOf(room);
+  if (!limit) {           // 房主设成"不限时"
+    room.turnRemain = null;
+    room.turnClockId = (room.turnClockId || 0) + 1;
+    return;
+  }
+  const ms = Math.max(1000, (remainMs === undefined || remainMs === null) ? limit : remainMs);
   room.turnClockId = (room.turnClockId || 0) + 1;   // 前端看到这个号变了就重置倒计时
   const cid = room.turnClockId;
   room.turnRemain = ms;
@@ -845,11 +858,13 @@ function startTurnClock(room, remainMs) {
 // turnChanged=true（回合换人）给满时间，否则按暂停时记下的剩余时间继续。
 function refreshTurnClockAfterSeatChange(room, turnChanged) {
   if (!room || room.status !== 'playing' || room.paused) { stopTurnClock(room); return; }
+  const limit = turnLimitOf(room);
+  if (!limit) { stopTurnClock(room); room.turnRemain = null; return; }
   // 没换人时按"这一刻真正还剩多少"续，不能直接拿 turnRemain（那是起表时的满值）
   const remain = room.turnDeadline
     ? Math.max(1000, room.turnDeadline - Date.now())
-    : (room.turnRemain || TURN_LIMIT);
-  startTurnClock(room, turnChanged ? TURN_LIMIT : remain);
+    : (room.turnRemain || limit);
+  startTurnClock(room, turnChanged ? limit : remain);
 }
 
 // 超时：替挂机的人把这一手走完，别让对局停住
@@ -1379,6 +1394,19 @@ io.on('connection', (socket) => {
     broadcastRoom(room);
   });
 
+  // 房主设定回合时限（秒）；0 = 不限时。0~120 秒之间取整，改完立刻按新时限重起表
+  socket.on('setTurnLimit', ({ seconds } = {}) => {
+    const room = currentRoom;
+    if (!room || !isRoomOwner(room, socket.id, currentPlayerId)) return;
+    const sec = Math.min(Math.max(Math.round(Number(seconds) || 0), 0), 120);
+    room.turnLimit = sec * 1000;
+    addLog(room, sec ? `回合时限设为 ${sec} 秒` : '回合计时已关闭（不限时）');
+    // 对局中改动：当前这一手按新时限重新计时，避免"剩 2 秒却被调成 60 秒"的落差
+    if (room.status === 'playing' && !room.paused) startTurnClock(room, sec ? room.turnLimit : null);
+    else stopTurnClock(room);
+    broadcastRoom(room);
+  });
+
   socket.on('restartGame', () => {
     const room = currentRoom;
     if (!room || !isRoomOwner(room, socket.id, currentPlayerId)) return;
@@ -1661,8 +1689,8 @@ io.on('connection', (socket) => {
     room.aiTurnPending = false;
     room.aiTurnSeq = null;
     room.turnSeq = (room.turnSeq || 0) + 1;   // 恢复后重新起排程，旧的定时器一律作废
-    // 暂停期间停掉的回合计时从剩余时间继续
-    startTurnClock(room, room.turnRemain || TURN_LIMIT);
+    // 暂停期间停掉的回合计时从剩余时间继续（房主设成不限时就不起表）
+    startTurnClock(room, turnLimitOf(room) ? (room.turnRemain || turnLimitOf(room)) : null);
     addLog(room, '游戏继续');
     broadcastRoom(room);
     scheduleIfAuto(room);

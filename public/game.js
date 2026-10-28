@@ -375,6 +375,18 @@ const SFX = (() => {
     osc.stop(t + dur + 0.03);
   }
 
+  // 金属铃：金币/硬币类音效的基本块。泛音取非整数倍（2.02、3.01…）才有金属味，
+  // 每个分音再带一点下滑，听起来像"震"，而不是一段稳定的正弦
+  function coinBell(base, peak, dur, when, parts) {
+    const mul = parts || [1, 2.02, 3.01, 4.19];
+    const amps = [1, 0.36, 0.17, 0.09, 0.05];
+    for (let i = 0; i < mul.length; i++) {
+      const f = base * mul[i];
+      tone(f, Math.max(0.04, dur * (1 - i * 0.17)), peak * (amps[i] || 0.05),
+        'sine', (when || 0) + i * 0.0015, f * 0.985);
+    }
+  }
+
   return {
     config: () => cfg,
     applyGain,
@@ -418,10 +430,18 @@ const SFX = (() => {
           tone(1245, 0.07, 0.05, 'sine', 0.16, 1760);   // 尾巴上一点亮光，像卡片被重新摊开
           break;
         }
-        case 'coin': {     // 购买：金币叮当（两个上行高音 + 一点金属脆响）
-          tone(988, 0.09, 0.2, 'triangle', 0);
-          tone(1319, 0.17, 0.16, 'triangle', 0.065);
-          noiseHit(0.035, 5600, 1.2, 0.14, { type: 'highpass', attack: 0.002, when: 0.02 });
+        case 'coin': {
+          // 购买：金币"叮当"——先一枚小币的碰撞脆点，再两枚叠在一起的金属铃音。
+          // 铃的分音不是整数倍，叠几个非整数倍分音才像真钱，否则就是一声电子音
+          noiseHit(0.014, 7600, 0.8, 0.34, { type: 'highpass', attack: 0.001 });          // 硬币相碰的"叮"
+          coinBell(988, 0.30, 0.16, 0, [1, 2.03, 3.02, 4.21]);
+          coinBell(1318.5, 0.34, 0.44, 0.055, [1, 2.02, 3.01, 4.19, 5.43]);             // 主音：亮、拖一点尾
+          coinBell(1975.5, 0.10, 0.20, 0.105, [1, 2.05]);                                // 第二枚币撞上来
+          // 余下几枚小币散落的细响，位置错开一点才自然
+          noiseHit(0.011, 8400, 0.9, 0.13, { type: 'highpass', attack: 0.001, when: 0.115 });
+          noiseHit(0.009, 9100, 0.9, 0.10, { type: 'highpass', attack: 0.001, when: 0.152 });
+          noiseHit(0.008, 7800, 0.9, 0.07, { type: 'highpass', attack: 0.001, when: 0.196 });
+          tone(196, 0.10, 0.10, 'sine', 0, 138);                                         // 落在柜台上的低频"咚"，给点实体感
           break;
         }
         case 'skip':      // 跳过：两个下行短音
@@ -454,6 +474,16 @@ const SFX = (() => {
         case 'click':     // 界面点击
           tone(660, 0.05, 0.08, 'sine', 0);
           break;
+        case 'tick': {    // 回合倒计时：只剩几秒时每秒轻轻一声，只敲给马上要超时的那个人
+          tone(1180, 0.05, 0.09, 'sine', 0, 1120);
+          noiseHit(0.012, 5200, 1.2, 0.05, { type: 'highpass', attack: 0.001 });
+          break;
+        }
+        case 'hurry': {   // 最后 3 秒：一声更急的"叮叮"，催一下但别吵
+          tone(1046, 0.05, 0.11, 'triangle', 0);
+          tone(1397, 0.09, 0.11, 'triangle', 0.075);
+          break;
+        }
         default: break;
       }
     },
@@ -498,12 +528,14 @@ function playStateSounds(state) {
 // turnClockId 变了说明服务端重新起表（换人 / 摸牌后继续 / 暂停恢复），这时才重置本地终点。
 let turnClockId = -1;
 let turnLocalEnd = 0;
+let turnTickAt = -1;      // 上次"滴"过的秒数，防止同一个数字响两遍
 
 function syncTurnClock(state) {
   if (!state || state.turnRemain == null) { turnLocalEnd = 0; return; }
   if (state.turnClockId === turnClockId) return;   // 同一张表：别把已经走掉的时间补回来
   turnClockId = state.turnClockId;
   turnLocalEnd = Date.now() + state.turnRemain;
+  turnTickAt = -1;
 }
 
 function paintTurnTimer() {
@@ -514,11 +546,27 @@ function paintTurnTimer() {
   const onGame = !!($('screen-game') && $('screen-game').classList.contains('active'));
   const on = onGame && !!s && s.status === 'playing' && !s.paused && turnLocalEnd > 0;
   el.classList.toggle('hidden', !on);
-  if (!on) { el.classList.remove('urgent'); return; }
+  if (!on) { el.classList.remove('urgent', 'mine'); turnTickAt = -1; return; }
+
   const left = Math.max(0, Math.ceil((turnLocalEnd - Date.now()) / 1000));
   el.textContent = '⏱ ' + left + 's';
-  // 最后 5 秒变红提醒：快超时了，超时会被自动摸牌跳过
-  el.classList.toggle('urgent', left <= 5);
+
+  // 只剩几秒的提醒只给"这一手就是你自己"的人：红字闪烁 + 滴答声。
+  // 别人的回合只显示秒数，不会闪也不会有声音，免得替别人紧张
+  const me = s.players ? s.players.find(p => p.isYou) : null;
+  const mine = !!(me && s.turnPlayerId && me.id === s.turnPlayerId);
+  el.classList.toggle('mine', mine);
+  const urgent = mine && left <= 5 && left > 0;
+  el.classList.toggle('urgent', urgent);
+
+  if (mine && left > 0 && left <= 5) {
+    if (turnTickAt !== left) {
+      turnTickAt = left;
+      SFX.play(left <= 3 ? 'hurry' : 'tick');
+    }
+  } else {
+    turnTickAt = -1;
+  }
 }
 setInterval(paintTurnTimer, 250);
 
@@ -565,6 +613,32 @@ $('sfx-volume').oninput = (e) => {
   SFX.setVolume(pct / 100);
   $('sfx-volume-value').textContent = pct + '%';
   SFX.play('click');   // 拖动时顺便试听音量
+};
+
+// 房主设置回合时限：改完立刻生效（对局中改会按新时限给当前这一手重新计时）
+function syncTurnLimitUi(state) {
+  if (!state) return;
+  const sec = Math.max(0, Math.round((state.turnLimit === undefined ? 30000 : state.turnLimit) / 1000));
+  const sel = $('turn-limit-select');
+  if (!sel) return;
+  // 服务端允许任意 0~120 秒，遇到不在列表里的值就补一个选项，别让下拉框空白
+  if (!Array.from(sel.options).some(o => Number(o.value) === sec)) {
+    const opt = document.createElement('option');
+    opt.value = String(sec);
+    opt.textContent = sec ? sec + ' 秒' : '不限时';
+    sel.appendChild(opt);
+  }
+  sel.value = String(sec);
+  sel.disabled = !state.isOwner;
+  const note = $('turn-limit-note');
+  if (note) note.textContent = state.isOwner
+    ? '超时会自动摸牌并跳过（选「不限时」就不催人）· 只有房主能改'
+    : '只有房主能改；超时会自动摸牌并跳过';
+}
+$('turn-limit-select').onchange = (e) => {
+  const sec = Number(e.target.value) || 0;
+  SFX.play('click');
+  socket.emit('setTurnLimit', { seconds: sec });
 };
 
 // ===== 模式选择 =====
@@ -709,6 +783,7 @@ socket.on('roomUpdate', (state) => {
 // ===== 渲染房间等待页 =====
 function renderLobby(state) {
   $('lobby-code').textContent = state.code || '';
+  syncTurnLimitUi(state);   // 房间页也能在设置里改回合时限（仅房主）
   $('btn-start').classList.toggle('hidden', !state.isOwner);
   $('btn-addai').classList.toggle('hidden', !state.isOwner);
   // 模式：房主可更换，其他人只读
@@ -1030,6 +1105,7 @@ function renderShop(state) {
 function renderGame(state) {
   currentGameState = state;
   syncTurnClock(state);   // 换人/重新起表时重置倒计时
+  syncTurnLimitUi(state); // 设置面板里的"回合时限"跟着房间状态走
   // 游戏开始后收起模式选择器，并把模式显示在牌桌顶部
   closeModePicker();
   roomMode = state.mode || null;
