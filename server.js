@@ -845,7 +845,11 @@ function startTurnClock(room, remainMs) {
 // turnChanged=true（回合换人）给满时间，否则按暂停时记下的剩余时间继续。
 function refreshTurnClockAfterSeatChange(room, turnChanged) {
   if (!room || room.status !== 'playing' || room.paused) { stopTurnClock(room); return; }
-  startTurnClock(room, turnChanged ? TURN_LIMIT : (room.turnRemain || TURN_LIMIT));
+  // 没换人时按"这一刻真正还剩多少"续，不能直接拿 turnRemain（那是起表时的满值）
+  const remain = room.turnDeadline
+    ? Math.max(1000, room.turnDeadline - Date.now())
+    : (room.turnRemain || TURN_LIMIT);
+  startTurnClock(room, turnChanged ? TURN_LIMIT : remain);
 }
 
 // 超时：替挂机的人把这一手走完，别让对局停住
