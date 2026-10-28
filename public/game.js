@@ -1006,6 +1006,10 @@ function renderShop(state) {
   const shop = Array.isArray(state.shop) && state.shop.length > 0 ? state.shop : null;
   const on = !!state.shopEnabled && !!shop;
   panel.classList.toggle('hidden', !on);
+  // 有商店时中间要多排三堆（弃牌堆+打牌堆+牌堆），牌得整体缩一号才不挤出屏幕；
+  // 正常版只有两堆，不加这个 class，牌保持原来的大尺寸
+  const center = $('center-area');
+  if (center) center.classList.toggle('has-shop', on);
   if (!on) {
     shopPick = null; shopPayIndex = null;
     $('btn-shop-buy').classList.add('hidden');
