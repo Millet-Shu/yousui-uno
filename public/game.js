@@ -91,12 +91,19 @@ $('btn-uno').onclick = () => socket.emit('callUno');
 $('btn-grab').onclick = () => socket.emit('grabLead');
 $('btn-skip').onclick = () => socket.emit('skipTurn');
 $('btn-grab-card').onclick = () => socket.emit('grabCard');
-// 商店购买：商品和付款牌都选好后才会显示这个按钮
+// 商店购买：商品和付款牌都选好后才会显示这个按钮；买牌会用掉本回合（不能接着出牌）
 $('btn-shop-buy').onclick = () => {
   if (shopPick === null || shopPayIndex === null) return;
   socket.emit('buyShopCard', { slot: shopPick, payIndex: shopPayIndex });
   shopPick = null;
   shopPayIndex = null;
+};
+// 刷新商店：每人每回合一次，四件商品全部换新，旧货进弃牌堆
+$('btn-shop-reroll').onclick = () => {
+  if ($('btn-shop-reroll').disabled) return;
+  shopPick = null;
+  shopPayIndex = null;
+  socket.emit('rerollShop');
 };
 $('btn-menu').onclick = () => $('menu-dropdown').classList.toggle('hidden');
 $('toggle-hand-count').onchange = (e) => {
@@ -861,7 +868,13 @@ function renderShop(state) {
   const shop = Array.isArray(state.shop) && state.shop.length > 0 ? state.shop : null;
   const on = !!state.shopEnabled && !!shop;
   panel.classList.toggle('hidden', !on);
-  if (!on) { shopPick = null; shopPayIndex = null; $('btn-shop-buy').classList.add('hidden'); return; }
+  if (!on) {
+    shopPick = null; shopPayIndex = null;
+    $('btn-shop-buy').classList.add('hidden');
+    const rb = $('btn-shop-reroll');
+    rb.disabled = true;
+    return;
+  }
 
   const isSpectator = !state.players.some(p => p.isYou);
   const canBuy = !isSpectator && canBuyShop(state);
@@ -927,11 +940,20 @@ function renderShop(state) {
   btn.classList.toggle('hidden', !ready);
   if (ready) btn.textContent = '确认购买';
 
+  // 刷新按钮：自己回合 + 本回合还没刷过才能点
+  const rerollBtn = $('btn-shop-reroll');
+  const canReroll = canBuy && !state.shopRerollUsed;
+  rerollBtn.disabled = !canReroll;
+  rerollBtn.textContent = state.shopRerollUsed ? '已刷新' : '刷新';
+  rerollBtn.title = canReroll
+    ? '把 4 件商品全部换掉（旧货进弃牌堆），每回合一次'
+    : (state.shopRerollUsed ? '本回合已经刷新过了' : '轮到你时才能刷新');
+
   const hint = $('shop-hint');
   if (!canBuy) {
-    hint.textContent = isSpectator ? '观战中' : '轮到你时才能买';
-  } else if (selectedSlot && selectedSlot.card && payCard && payCard.color === selectedSlot.priceColor) {
-    hint.textContent = '点下面按钮确认购买';
+    hint.textContent = isSpectator ? '观战中' : '轮到你时才能买 / 刷新';
+  } else if (ready) {
+    hint.textContent = '购买后本回合结束，不能再出牌';
   } else if (selectedSlot && selectedSlot.card) {
     hint.textContent = `再选一张${COLOR_NAME[selectedSlot.priceColor] || ''}色手牌`;
   } else if (payCard) {

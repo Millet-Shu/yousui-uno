@@ -90,7 +90,8 @@ function buildShop(room) {
   return out;
 }
 
-// 换回合时把售罄的格子补上新货（牌堆不够就空着，等洗牌）
+// 商店补货：把售罄/空掉的格子补上新货（牌堆不够就空着，等洗牌）
+// 只有在四件商品全部卖光、或玩家主动刷新时才会走到这里
 function refillShop(room) {
   if (!rulesOf(room).shop || !Array.isArray(room.shop)) return;
   room.shop = room.shop.map(s => (s && !s.sold) ? s : (makeShopSlot(room) || null));
@@ -187,6 +188,7 @@ function createRoom(maxPlayers = 4) {
     pausedById: null,
     grabAvailable: null,  // 可以抢牌的状态 { card, playedBy }
     shop: null,           // 有岁商店：4 张在售牌（只有 yousui 模式才有）
+    shopRerollUsed: false, // 本回合是否已经刷新过商店（每人每回合一次）
     log: []
   });
   return rooms.get(code);
@@ -256,6 +258,7 @@ function publicRoomState(room, selfPlayer) {
     // 有岁商店：只在有商店的模式、且对局进行中下发
     shopEnabled: !!rulesOf(room).shop,
     shop: (rulesOf(room).shop && (room.status === 'playing' || room.status === 'grabbing')) ? (room.shop || null) : null,
+    shopRerollUsed: !!room.shopRerollUsed,
     maxPlayers: room.maxPlayers,
     justDrew: !!room.justDrew,
     // 房主身份按玩家 id 判定：socket 重连换了新 id 也不会丢失房主
@@ -331,6 +334,7 @@ function startGame(room) {
   room.discardPile = [];
   room.topCard = null;
   room.shop = rules.shop ? buildShop(room) : null;   // 有岁模式：从牌堆抽 4 件商品上架
+  room.shopRerollUsed = false;
 
   for (const p of room.players) {
     p.hand = []; p.finished = false; p.rank = null; p.unoCalled = false;
@@ -777,8 +781,8 @@ function advance(room) {
   room.currentIndex = next;
   // ✅ 切换玩家时清理 justDrew
   room.justDrew = false;
-  // 有岁商店：换回合时把售罄的空格补上新货
-  refillShop(room);
+  // 新回合开始：本回合的商店刷新次数重置
+  room.shopRerollUsed = false;
 }
 
 // 抢牌功能：任何人（包括刚打出的人自己）抢出与顶牌完全相同的牌
@@ -860,10 +864,44 @@ function buyShopCard(room, playerId, slot, payIndex) {
   player.hand.splice(payIndex, 1);
   room.discardPile.push(pay);        // 手上的付款牌进弃牌堆
   player.hand.push(goods.card);      // 买到的牌进手牌
-  room.shop[slot] = { sold: true };  // 卖掉的位置留空，换回合再补货
+  room.shop[slot] = { sold: true };  // 卖掉的位置留空，四件都卖光才补货
   addLog(room, `${player.name} 用 ${cardName(pay)} 在商店换走了 ${cardName(goods.card)}`);
+
+  // 买牌直接过回合：既然来买，说明手上没有能出的牌
+  closeGrabWindow(room);
+  // 四件商品全部卖光才自动补货，没卖完就一直空着，等玩家自己刷新
+  if (room.shop.every(s => !s || s.sold)) {
+    refillShop(room);
+    addLog(room, '商店卖空了，重新上架 4 件商品');
+  }
+  advance(room);
+
   broadcastRoom(room);
   scheduleIfAuto(room);
+  return true;
+}
+
+// 刷新商店：每个玩家每回合限一次，四件商品全部换掉。
+// 从牌堆顶抽 4 张上架，刷新前的商品全部进弃牌堆。
+function rerollShop(room, playerId) {
+  if (!rulesOf(room).shop) return false;
+  if (room.status !== 'playing' || room.paused) return false;
+  if (!Array.isArray(room.shop)) return false;
+  const player = room.players[room.currentIndex];
+  if (!player || player.id !== playerId) return false;     // 只有当前回合的玩家能刷新
+  if (room.wildPending || room.pendingDraw > 0) return false;  // 先处理选色/罚牌
+  if (room.shopRerollUsed) return false;                   // 本回合已经刷过
+
+  const old = room.shop.map(s => (s && s.card) ? s.card : null).filter(Boolean);
+  // 先抽新货再扔旧货，避免牌堆见底时把刚扔掉的四张又直接洗回来
+  const next = [];
+  for (let i = 0; i < SHOP_SIZE; i++) next.push(makeShopSlot(room) || null);
+  room.shop = next;
+  if (old.length) room.discardPile.push(...old);   // 刷新前的商品进弃牌堆
+  room.shopRerollUsed = true;
+
+  addLog(room, `${player.name} 刷新了商店，${old.length} 件旧货进弃牌堆`);
+  broadcastRoom(room);
   return true;
 }
 
@@ -1131,6 +1169,7 @@ io.on('connection', (socket) => {
     room.aiTurnSeq = null;
     room.grabAvailable = null;
     room.shop = null;       // 结束对局回到房间：商店下架
+    room.shopRerollUsed = false;
     room.paused = false;
     room.pausedBy = null;
     room.pausedById = null;
@@ -1453,6 +1492,10 @@ io.on('connection', (socket) => {
 
   socket.on('buyShopCard', ({ slot, payIndex } = {}) => {
     if (currentRoom) buyShopCard(currentRoom, currentPlayerId, slot, payIndex);
+  });
+
+  socket.on('rerollShop', () => {
+    if (currentRoom) rerollShop(currentRoom, currentPlayerId);
   });
 
   socket.on('callUno', () => {

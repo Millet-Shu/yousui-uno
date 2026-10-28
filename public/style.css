@@ -374,7 +374,17 @@ input:focus { border-color: #6c7bff; }
   border-radius: 14px;
   backdrop-filter: blur(6px);
 }
+.shop-head { display: flex; align-items: center; gap: 8px; }
 .shop-title { font-size: 11px; font-weight: 700; color: #ffd040; letter-spacing: 2px; }
+/* 刷新商店：每人每回合一次 */
+.btn-shop-reroll {
+  font-size: 10px; line-height: 1; padding: 3px 7px;
+  border-radius: 8px; border: 1px solid rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.1); color: #e6ecff; cursor: pointer;
+  transition: background .15s, opacity .15s;
+}
+.btn-shop-reroll:hover:not(:disabled) { background: rgba(255,255,255,0.22); }
+.btn-shop-reroll:disabled { opacity: .42; cursor: default; }
 .shop-items { display: flex; gap: 6px; }
 .card.shop-card {
   border-radius: 8px; position: relative; overflow: hidden;
