@@ -1025,6 +1025,13 @@ function aiTurn(room) {
   }
 
   if (playable.length === 0) {
+    // 有岁商店：出不了牌时先去商店逛逛（买一张指定的牌比随机摸一张划算）。
+    // 商店操作放到定时器里做，给玩家留出看清"AI 在换牌"的时间，避免瞬间执行显得卡顿
+    if (rulesOf(room).shop && room.pendingDraw === 0 && Array.isArray(room.shop)
+        && room.shop.some(s => s && s.card)) {
+      scheduleAiShopAction(room, player, () => aiShopVisit(room, player));
+      return;
+    }
     drawCard(room, player.id);
     return;
   }
@@ -1062,6 +1069,92 @@ function aiTurn(room) {
   }
 
   playCard(room, player.id, bestIdx, chosenColor);
+}
+
+// ==================== AI 逛有岁商店 ====================
+// 买牌会结束回合，所以 AI 只在"手上没有牌可出"时才来（否则白白浪费一次出牌机会）。
+// 所有商店操作都走定时器，给玩家留出看清动作的时间，避免瞬间执行让对局看起来卡顿。
+const AI_SHOP_PAUSE = 1000;     // 商店动作前的停顿（毫秒）
+const AI_REROLL_CHANCE = 0.45;  // 没有值得买的商品时，刷新商店的概率
+const AI_BUY_SCORE = 26;        // 净收益到这条线才值得买（买完这一回合就没了）
+
+// AI 眼里一张牌值多少分：万能 / 加四最香，+2 次之，功能牌看情况，数字牌看同色搭配
+function aiCardValue(card, hand) {
+  let v;
+  if (card.type === T.WILD_DRAW_FOUR) v = 100;
+  else if (card.type === T.WILD) v = 82;
+  else if (card.type === T.DRAW_TWO) v = 70;
+  else if (card.type === T.SKIP || card.type === T.REVERSE) v = 46;
+  else v = 10 + (card.value || 0);
+
+  if (card.color !== 'none') {
+    // 手上同色越多，这张越好打出去
+    v += Math.min(hand.filter(c => c.color === card.color).length * 2, 10);
+    // 手里已经有完全一样的牌：打出一张后能立刻抢出另一张（连打），价值陡增
+    const dup = hand.filter(c => c.color === card.color && c.type === card.type && c.value === card.value).length;
+    if (dup > 0) v += 30;
+  }
+  // 残局阶段万能牌更值钱
+  if (isWild(card) && hand.length <= 4) v += 10;
+  return v;
+}
+
+// 拿这张牌付款有多亏：同款（连打资源）最亏，罚牌 / 功能牌次之，数字牌按点数
+function aiPayCost(card, hand) {
+  let cost = 4 + (card.type === T.NUMBER ? (card.value || 0) : 0);
+  if (card.type === T.SKIP || card.type === T.REVERSE) cost += 40;
+  if (card.type === T.DRAW_TWO) cost += 60;
+  const sameCount = hand.filter(c => c.color === card.color && c.type === card.type && c.value === card.value).length;
+  if (sameCount > 1) cost += 30;   // 拆连打组合去付款很亏
+  if (hand.filter(c => c.color === card.color).length <= 1) cost += 10;  // 这个颜色只剩这一张
+  return cost;
+}
+
+// 找出最划算的一笔交易：商品价值 - 付款代价；没有任何能付得起的就返回 null
+function aiBestPurchase(room, player) {
+  if (!rulesOf(room).shop || !Array.isArray(room.shop)) return null;
+  let best = null;
+  room.shop.forEach((slot, slotIdx) => {
+    if (!slot || slot.sold || !slot.card) return;
+    const gain = aiCardValue(slot.card, player.hand);
+    for (let payIndex = 0; payIndex < player.hand.length; payIndex++) {
+      const pay = player.hand[payIndex];
+      if (pay.color === 'none' || pay.color !== slot.priceColor) continue;  // 万能牌不能当货币
+      const net = gain - aiPayCost(pay, player.hand);
+      if (!best || net > best.net) best = { slot: slotIdx, payIndex, net };
+    }
+  });
+  return best;
+}
+
+// AI 逛商店：有划算的就买（买完自动结束回合）；没有就按概率刷新一次再看；都不行才摸牌
+function aiShopVisit(room, player) {
+  const plan = aiBestPurchase(room, player);
+  if (plan && plan.net >= AI_BUY_SCORE
+      && buyShopCard(room, player.id, plan.slot, plan.payIndex)) return;
+
+  // 完全没有付得起的商品 → 刷新概率更高；有能付但不够划算 → 刷新概率低一些
+  const chance = plan ? AI_REROLL_CHANCE : Math.min(AI_REROLL_CHANCE + 0.25, 0.85);
+  if (!room.shopRerollUsed && Math.random() < chance && rerollShop(room, player.id)) {
+    // 刷新后再评估一次：中间留个停顿，别让两个操作挤在同一帧
+    scheduleAiShopAction(room, player, () => aiShopVisit(room, player));
+    return;
+  }
+
+  drawCard(room, player.id);
+}
+
+// 商店动作的定时器：回合没变、还是这个 AI、没暂停才执行（否则这一手作废，等重新排程）
+function scheduleAiShopAction(room, player, fn) {
+  const seq = room.turnSeq;
+  const pid = player.id;
+  setTimeout(() => {
+    if (room.turnSeq !== seq) return;
+    if (room.status !== 'playing' || room.paused) return;
+    const cur = room.players[room.currentIndex];
+    if (!cur || cur.id !== pid || !isAutoPlayer(cur)) return;
+    fn();
+  }, AI_SHOP_PAUSE);
 }
 
 // ==================== Socket 事件 ====================
