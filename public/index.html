@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>有岁 UNO</title>
-<link rel="stylesheet" href="style.css?v=50">
+<link rel="stylesheet" href="style.css?v=51">
 </head>
 <body>
 
@@ -117,6 +117,8 @@
         <span id="dir-icon">↺</span><span id="dir-text">逆时针</span>
         <span class="turn-order-sep">·</span><span id="next-player"></span>
       </span>
+      <!-- 回合计时：超时会自动摸牌/收罚牌，避免有人挂机把整局卡住 -->
+      <span id="turn-timer" class="turn-timer hidden">⏱ 30s</span>
     </div>
 
     <!-- 右上角菜单 -->
@@ -284,6 +286,6 @@
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="game.js?v=66"></script>
+<script src="game.js?v=67"></script>
 </body>
 </html>

@@ -411,6 +411,19 @@ const SFX = (() => {
           tone(150, 0.05, 0.05, 'sine', 0.28, 105);   // 尾巴上轻轻一收
           break;
         }
+        case 'reroll': {
+          // 刷新商店：轻飘飘的一"唰"——高频带通扫上去，不加撞击，要的就是"轻"
+          noiseHit(0.24, 1500, 1.6, 0.13, { type: 'bandpass', to: 6200, sweepEnd: 0.75, attack: 0.055 });
+          noiseHit(0.20, 800, 1.0, 0.06, { type: 'lowpass', to: 2600, attack: 0.06, when: 0.08 });
+          tone(1245, 0.07, 0.05, 'sine', 0.16, 1760);   // 尾巴上一点亮光，像卡片被重新摊开
+          break;
+        }
+        case 'coin': {     // 购买：金币叮当（两个上行高音 + 一点金属脆响）
+          tone(988, 0.09, 0.2, 'triangle', 0);
+          tone(1319, 0.17, 0.16, 'triangle', 0.065);
+          noiseHit(0.035, 5600, 1.2, 0.14, { type: 'highpass', attack: 0.002, when: 0.02 });
+          break;
+        }
         case 'skip':      // 跳过：两个下行短音
           tone(440, 0.1, 0.16, 'triangle', 0);
           tone(330, 0.14, 0.16, 'triangle', 0.1);
@@ -470,6 +483,8 @@ function playStateSounds(state) {
 
   const text = fresh.join(' | ');
   if (/获胜|游戏结束/.test(text)) { SFX.play('win'); return; }
+  if (/换走了|买走/.test(text)) { SFX.play('coin'); return; }      // 商店买牌：金币叮当
+  if (/刷新了商店/.test(text)) { SFX.play('reroll'); return; }     // 刷新商店：轻"唰"
   if (/抢/.test(text)) { SFX.play('grab'); return; }          // 抢牌优先：常带跳过/反转，不能被覆盖
   if (/UNO|有岁/.test(text)) { SFX.play('uno'); return; }
   if (/方向反转/.test(text)) { SFX.play('reverse'); return; }
@@ -477,6 +492,35 @@ function playStateSounds(state) {
   if (/罚|摸/.test(text)) { SFX.play('draw'); return; }
   SFX.play('card');
 }
+
+// ===== 回合计时显示 =====
+// 服务端只在下发状态时给"这回合还剩多少毫秒"，前端本地每秒减，不用为倒计时反复广播。
+// turnClockId 变了说明服务端重新起表（换人 / 摸牌后继续 / 暂停恢复），这时才重置本地终点。
+let turnClockId = -1;
+let turnLocalEnd = 0;
+
+function syncTurnClock(state) {
+  if (!state || state.turnRemain == null) { turnLocalEnd = 0; return; }
+  if (state.turnClockId === turnClockId) return;   // 同一张表：别把已经走掉的时间补回来
+  turnClockId = state.turnClockId;
+  turnLocalEnd = Date.now() + state.turnRemain;
+}
+
+function paintTurnTimer() {
+  const el = $('turn-timer');
+  if (!el) return;
+  const s = currentGameState;
+  // "还在牌桌上"才显示：回到房间等待页时 currentGameState 可能还是上一局的旧状态
+  const onGame = !!($('screen-game') && $('screen-game').classList.contains('active'));
+  const on = onGame && !!s && s.status === 'playing' && !s.paused && turnLocalEnd > 0;
+  el.classList.toggle('hidden', !on);
+  if (!on) { el.classList.remove('urgent'); return; }
+  const left = Math.max(0, Math.ceil((turnLocalEnd - Date.now()) / 1000));
+  el.textContent = '⏱ ' + left + 's';
+  // 最后 5 秒变红提醒：快超时了，超时会被自动摸牌跳过
+  el.classList.toggle('urgent', left <= 5);
+}
+setInterval(paintTurnTimer, 250);
 
 // ===== 设置面板（规则 + 音乐 + 音效）=====
 function openSettings() {
@@ -985,6 +1029,7 @@ function renderShop(state) {
 
 function renderGame(state) {
   currentGameState = state;
+  syncTurnClock(state);   // 换人/重新起表时重置倒计时
   // 游戏开始后收起模式选择器，并把模式显示在牌桌顶部
   closeModePicker();
   roomMode = state.mode || null;

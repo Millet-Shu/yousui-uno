@@ -69,6 +69,11 @@ function rulesOf(room) {
   return MODE_RULES[room && room.mode] || MODE_RULES.normal;
 }
 
+// ===== 回合计时器 =====
+// 每位玩家一回合 30 秒：挂机不动就由服务端代为行动（摸牌/清罚牌/补选颜色），
+// 避免有人坐在座位上但一直不出牌，把整局永远卡在那一个人身上。
+const TURN_LIMIT = 30000;
+
 // ===== 有岁商店 =====
 const SHOP_SIZE = 4;
 
@@ -182,6 +187,10 @@ function createRoom(maxPlayers = 4) {
     aiTurnPending: false,        // ✅ AI 已排程标记
     aiTurnSeq: null,             // 该排程对应的回合序号，回合切换后旧定时器自动作废
     turnSeq: 0,                  // 回合序号：每次换人/重开都自增，用于作废旧异步定时器
+    turnDeadline: null,          // 本回合截止时间戳（毫秒）；给前端算剩余秒数
+    turnRemain: null,            // 暂停时记下的剩余毫秒，恢复后接着走
+    turnTimer: null,             // 回合计时器句柄
+    turnClockId: 0,              // 计时器版本号：每次重新起表自增，前端据此重置倒计时显示
     gameId: 0,                   // 局次：每次开局自增，避免上一局的抢先手定时器串到新局
     paused: false,
     pausedBy: null,
@@ -249,6 +258,13 @@ function publicRoomState(room, selfPlayer) {
     wildPending: room.wildPending,
     paused: !!room.paused,
     pausedBy: room.pausedBy || null,
+    // 回合计时：只在对局进行中且没暂停时给剩余毫秒，前端用本地时间倒计时
+    turnRemain: (room.status === 'playing' && !room.paused && room.turnDeadline)
+      ? Math.max(0, room.turnDeadline - Date.now()) : null,
+    turnLimit: TURN_LIMIT,
+    turnClockId: room.turnClockId || 0,
+    turnPlayerId: (room.status === 'playing' && room.players[room.currentIndex])
+      ? room.players[room.currentIndex].id : null,
     isPausedByYou: room.pausedById ? room.pausedById === selfId : room.pausedBy === (selfPlayer ? selfPlayer.name : ''),
     pendingReport: room.pendingReport,
     myUnoCalled: selfId ? !!room.unoCalled[selfId] : false,
@@ -333,6 +349,8 @@ function startGame(room) {
   room.status = 'grabbing';
   room.gameId = (room.gameId || 0) + 1;   // 新的一局：旧局的早起手定时器作废
   room.turnSeq = (room.turnSeq || 0) + 1; // 新的一局：旧的回合定时器作废
+  stopTurnClock(room);                    // 上一局的回合计时器作废
+  room.turnRemain = null;
   room.drawPile = shuffle(rules.buildDeck());
   room.playPile = [];
   room.discardPile = [];
@@ -450,6 +468,7 @@ function grabLead(room, playerId) {
     }
   }
 
+  startTurnClock(room);   // 先起表再广播，前端第一次渲染就能看到倒计时
   broadcastRoom(room);
 
   const next = room.players[room.currentIndex];
@@ -565,7 +584,12 @@ function handleCardEffect(room, player, card, chosenColor) {
   checkWin(room);
   if (room.status === 'over') { broadcastRoom(room); return; }
 
-  if (room.wildPending) { broadcastRoom(room); return; }
+  if (room.wildPending) {
+    // 等待选色：重新计一次时（选色也是这一手的一部分，不然后面可能一秒都不剩）
+    startTurnClock(room);
+    broadcastRoom(room);
+    return;
+  }
 
   openGrabWindow(room, player);
 }
@@ -709,6 +733,8 @@ function drawCard(room, playerId) {
     advance(room);
     room.unoBadge = null;   // 换到下一位玩家，飘带消失
   }
+  // 摸到能出的牌 → 这回合继续，给他重新计一次时（要先起表再广播，前端才看得到新的倒计时）
+  if (room.justDrew) startTurnClock(room);
   broadcastRoom(room);
 
   scheduleIfAuto(room);
@@ -786,6 +812,86 @@ function ensureOwner(room) {
   }
 }
 
+// 停表：暂停/结束时调用。顺手记下还剩多少毫秒，恢复时接着走
+function stopTurnClock(room) {
+  if (room.turnTimer) { clearTimeout(room.turnTimer); room.turnTimer = null; }
+  if (room.turnDeadline) room.turnRemain = Math.max(0, room.turnDeadline - Date.now());
+  room.turnDeadline = null;
+}
+
+// 起表：每次换人/重开计时都用这个。remainMs 传了就按剩余时间续（暂停恢复用）
+function startTurnClock(room, remainMs) {
+  if (room.turnTimer) { clearTimeout(room.turnTimer); room.turnTimer = null; }
+  room.turnDeadline = null;
+  if (!room || room.status !== 'playing' || room.paused || room.players.length === 0) {
+    room.turnRemain = null;
+    return;
+  }
+  const ms = Math.max(1000, (remainMs === undefined || remainMs === null) ? TURN_LIMIT : remainMs);
+  room.turnClockId = (room.turnClockId || 0) + 1;   // 前端看到这个号变了就重置倒计时
+  const cid = room.turnClockId;
+  room.turnRemain = ms;
+  room.turnDeadline = Date.now() + ms;
+  room.turnTimer = setTimeout(() => {
+    room.turnTimer = null;
+    // 只认最后一张表：中途重起过表（换人/续时/暂停恢复）时旧表直接作废。
+    // 注意要用 clockId 而不是 turnSeq —— 抢牌窗口开关也会动 turnSeq
+    if (room.turnClockId !== cid) return;
+    timeoutTurn(room);
+  }, ms);
+}
+
+// 有人离开/被踢/暂停解除后，把回合计时重新对齐到现在的当前玩家。
+// turnChanged=true（回合换人）给满时间，否则按暂停时记下的剩余时间继续。
+function refreshTurnClockAfterSeatChange(room, turnChanged) {
+  if (!room || room.status !== 'playing' || room.paused) { stopTurnClock(room); return; }
+  startTurnClock(room, turnChanged ? TURN_LIMIT : (room.turnRemain || TURN_LIMIT));
+}
+
+// 超时：替挂机的人把这一手走完，别让对局停住
+function timeoutTurn(room) {
+  if (!room || room.status !== 'playing' || room.paused) return;
+  const player = room.players[room.currentIndex];
+  if (!player) return;
+  // AI 由自己的排程行动：这里只轻轻催一下，再给它几秒
+  if (isAutoPlayer(player)) {
+    startTurnClock(room, 5000);
+    scheduleIfAuto(room, 400);
+    return;
+  }
+
+  room.turnDeadline = null;
+  room.turnRemain = null;
+
+  // 卡在选色：超时就随便替它选一个，否则这一手永远走不完
+  if (room.wildPending) {
+    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    addLog(room, `${player.name} 超时，自动选色 ${colorName(color)}`);
+    resolveWildColor(room, player.id, color);
+    broadcastRoom(room);
+    return;   // resolveWildColor 内部会 advance 并重起计时
+  }
+
+  // 有罚牌：替它认罚（drawCard 会清罚牌、换人、重起计时）
+  if (room.pendingDraw > 0) {
+    addLog(room, `${player.name} 超时，自动收下 ${room.pendingDraw} 张罚牌`);
+    drawCard(room, player.id);
+    return;
+  }
+
+  // 普通超时：摸一张就走（摸到能出的也直接过，挂机就是挂机）
+  // 已经摸过牌的人（justDrew）不再补发，免得靠超时多摸一张
+  const drawn = room.justDrew ? [] : drawCards(room, 1);
+  if (drawn.length) player.hand.push(...drawn);
+  addLog(room, drawn.length ? `${player.name} 超时，自动摸 1 张并跳过` : `${player.name} 超时，跳过`);
+  closeGrabWindow(room);
+  room.justDrew = false;
+  advance(room);          // advance 内部会重起计时
+  room.unoBadge = null;
+  broadcastRoom(room);
+  scheduleIfAuto(room);
+}
+
 function advance(room) {
   const n = room.players.length;
   if (n === 0) return;
@@ -801,6 +907,8 @@ function advance(room) {
   room.justDrew = false;
   // 新回合开始：本回合的商店刷新次数重置
   room.shopRerollUsed = false;
+  // 新回合重新起表（暂停中会自己停掉）
+  startTurnClock(room);
 }
 
 // 抢牌功能：任何人（包括刚打出的人自己）抢出与顶牌完全相同的牌
@@ -938,6 +1046,7 @@ function rerollShop(room, playerId) {
 function abortIfTooFewPlayers(room) {
   if (room.status === 'waiting' || room.status === 'over' || room.players.length >= 2) return false;
   room.status = 'over';
+  stopTurnClock(room);   // 人走光了，回合计时停掉
   room.grabAvailable = null;
   room.pendingReport = null;
   room.wildPending = false;
@@ -985,6 +1094,7 @@ function checkWin(room) {
   const remaining = room.players.filter(p => !p.finished);
   if (remaining.length <= 1 && room.status === 'playing') {
     room.status = 'over';
+    stopTurnClock(room);   // 对局结束，回合计时不必再走
     // 对局结束：清掉所有挂起的抢牌/举报窗口，避免结束后按钮还亮着
     room.grabAvailable = null;
     room.pendingReport = null;
@@ -1279,6 +1389,8 @@ io.on('connection', (socket) => {
     const room = currentRoom;
     if (!room || !isRoomOwner(room, socket.id, currentPlayerId)) return;
     room.status = 'waiting';
+    stopTurnClock(room);    // 回到等待区，回合计时停掉
+    room.turnRemain = null;
     room.players.forEach(p => { p.hand = []; p.finished = false; p.rank = null; });
     room.drawPile = [];
     room.playPile = [];
@@ -1377,6 +1489,7 @@ io.on('connection', (socket) => {
       abortIfTooFewPlayers(room);
 
       scheduleGrabLeadFallback(room);   // 抢先手阶段没人能点按钮时兜底开局
+      refreshTurnClockAfterSeatChange(room, wasCurrent);   // 被踢的是当前玩家 → 下家重新计时
       broadcastRoom(room);
       scheduleIfAuto(room);
       return;
@@ -1397,6 +1510,7 @@ io.on('connection', (socket) => {
         const ks = io.sockets.sockets.get(kicked.socketId);
         if (ks) ks.emit('kicked', { reason: '你被房主踢出了观战席' });
       }
+      refreshTurnClockAfterSeatChange(room, false);   // 暂停发起者被踢 → 计时按剩余时间继续
       broadcastRoom(room);
     }
   });
@@ -1526,6 +1640,7 @@ io.on('connection', (socket) => {
     room.aiTurnPending = false;
     room.aiTurnSeq = null;
     closeGrabWindow(room);   // 暂停时关闭抢牌窗口，并作废旧回合的定时器
+    stopTurnClock(room);     // 回合计时也停表，恢复后从剩余时间接着走
     room.turnSeq = (room.turnSeq || 0) + 1;
     addLog(room, `${room.pausedBy} 暂停了游戏`);
     broadcastRoom(room);
@@ -1542,6 +1657,8 @@ io.on('connection', (socket) => {
     room.aiTurnPending = false;
     room.aiTurnSeq = null;
     room.turnSeq = (room.turnSeq || 0) + 1;   // 恢复后重新起排程，旧的定时器一律作废
+    // 暂停期间停掉的回合计时从剩余时间继续
+    startTurnClock(room, room.turnRemain || TURN_LIMIT);
     addLog(room, '游戏继续');
     broadcastRoom(room);
     scheduleIfAuto(room);
@@ -1551,6 +1668,7 @@ io.on('connection', (socket) => {
     const room = currentRoom;
     if (!room) return;
     const idx = room.players.findIndex(p => p.id === currentPlayerId);
+    let seatTurnChanged = false;
     if (idx >= 0) {
       const p = room.players[idx];
       const wasCurrent = room.status === 'playing' && room.currentIndex === idx;
@@ -1578,6 +1696,7 @@ io.on('connection', (socket) => {
           room.pendingDraw = 0;
           room.pendingDrawType = null;
           room.shopRerollUsed = false;   // 换人接手这一回合，刷新次数跟着重置
+          seatTurnChanged = true;        // 回合计时交给下一个人重新计时
         }
       }
     }
@@ -1603,6 +1722,7 @@ io.on('connection', (socket) => {
     }
     ensureOwner(room);   // 已定义于 L543：房主已离开且无人接管时兜底选人
     scheduleGrabLeadFallback(room);   // 抢先手阶段没人能点按钮时兜底开局
+    refreshTurnClockAfterSeatChange(room, seatTurnChanged);   // 换人/解除暂停后计时接上
     broadcastRoom(room);
     scheduleIfAuto(room, AI_DELAY_EXTRA);
     currentRoom = null;
@@ -1790,6 +1910,11 @@ io.on('connection', (socket) => {
         p.socketId = socket.id;
         p.offline = false;
         p.aiProxy = false;  // 玩家回来后立即取消 AI 代理
+        // 掉线期间回合计时一直在走：如果正轮到他，人回来了就重新计一次时
+        if (room.status === 'playing' && !room.paused
+            && room.players[room.currentIndex] && room.players[room.currentIndex].id === p.id) {
+          startTurnClock(room);
+        }
         // 房主换了 socket 也要保住房主身份；房间暂时无房主时由重连者接管
         if (room.ownerPlayerId === p.id || !room.ownerPlayerId) {
           room.ownerPlayerId = p.id;

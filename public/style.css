@@ -547,9 +547,26 @@ input:focus { border-color: #6c7bff; }
 #dir-icon { font-size: 12px; color: #9fb0ff; }
 .turn-order-sep { opacity: .5; }
 #next-player { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; }
+/* 回合计时：最后 5 秒变红闪烁，提醒别超时（超时会被自动摸牌跳过） */
+.turn-timer {
+  display: inline-flex; align-items: center; flex: 0 0 auto;
+  padding: 2px 8px; border-radius: 10px;
+  background: rgba(8,12,26,0.62);
+  border: 1px solid rgba(255,208,64,0.28);
+  color: #ffd040; font-size: 11px; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.turn-timer.hidden { display: none !important; }
+.turn-timer.urgent {
+  color: #ff7070; border-color: rgba(255,90,90,0.55);
+  background: rgba(255,60,60,0.18);
+  animation: timer-pulse .7s ease-in-out infinite alternate;
+}
+@keyframes timer-pulse { from { opacity: .55; } to { opacity: 1; } }
 @media (max-width: 420px) {
   .turn-order { font-size: 10px; padding: 2px 6px; }
-  #status-text { max-width: 46vw; }
+  .turn-timer { font-size: 10px; padding: 2px 6px; }
+  #status-text { max-width: 42vw; }
 }
 
 #game-log {
