@@ -397,6 +397,7 @@ input:focus { border-color: #6c7bff; }
 .card.shop-card:not(.official).yellow { background: #e8d020; color: #333; }
 .card.shop-card:not(.official).green  { background: #30b050; }
 .card.shop-card:not(.official).blue   { background: #3070d0; }
+.card.shop-card:not(.official).none   { background: #333; }
 .card.shop-card:hover { transform: translateY(-4px); }
 .card.shop-card.selected { box-shadow: 0 0 0 3px #ffd040, 0 8px 20px rgba(0,0,0,.5); transform: translateY(-6px); }
 .card.shop-card.dim { opacity: .45; }
@@ -414,14 +415,17 @@ input:focus { border-color: #6c7bff; }
   font-weight: 700; color: rgba(255,255,255,0.55);
   letter-spacing: 1px; white-space: nowrap;
 }
-/* 价签色点：万能牌没有颜色，用右上角小圆点表示"要用什么颜色买" */
-.price-dot {
-  position: absolute; top: 4px; right: 4px;
-  width: 9px; height: 9px; border-radius: 50%;
-  border: 1.5px solid rgba(255,255,255,.85);
-  box-shadow: 0 1px 3px rgba(0,0,0,.5);
-  pointer-events: none;
+/* 价签流动条：万能牌没有颜色，用价签色在边框上跑四条短光条，提示"要用什么颜色买" */
+.price-ring { position: absolute; inset: 1px; pointer-events: none; }
+.price-ring i {
+  position: absolute; border-radius: 2px;
+  background: var(--ring-color, #fff);
+  box-shadow: 0 0 6px var(--ring-color, #fff);
 }
+.price-ring i:nth-child(1) { top: 1px;    height: 2px; width: 30%; animation: ring-x 1.6s ease-in-out infinite alternate; }
+.price-ring i:nth-child(2) { bottom: 1px; height: 2px; width: 30%; animation: ring-x 1.6s ease-in-out infinite alternate-reverse; }
+.price-ring i:nth-child(3) { left: 1px;   width: 2px; height: 26%; animation: ring-y 1.6s ease-in-out infinite alternate; }
+.price-ring i:nth-child(4) { right: 1px;  width: 2px; height: 26%; animation: ring-y 1.6s ease-in-out infinite alternate-reverse; }
 .shop-hint { font-size: 10px; color: #9aa6c8; text-align: center; }
 
 #action-bar .btn-shop-buy {

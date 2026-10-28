@@ -839,8 +839,8 @@ function paintTopCard(el, card, currentColor) {
     return;
   }
   el.className = 'card ' + (card.color === 'none' ? 'wild' : card.color) + (official ? ' official' : '');
-  el.style.boxShadow = (!official && card.color === 'none' && currentColor)
-    ? `0 0 0 4px var(--color-${currentColor})` : 'none';
+  // 万能牌不再用纯色外框表示颜色，统一改成边框上的彩色流动条（#top-card-wrap .wild-ring）
+  el.style.boxShadow = 'none';
   if (official) { el.innerHTML = faceHtml(card); return; }
   el.innerHTML = '<span id="top-label"></span>';
   $('top-label').textContent = cardText(card);
@@ -907,13 +907,14 @@ function renderShop(state) {
     if (isSpectator || !canBuy || !havePay) el.classList.add('dim');
     if (isOfficialUI()) el.innerHTML = faceHtml(slot.card);
     else el.textContent = cardText(slot.card);
-    // 只有万能牌需要提示"要用什么颜色买"：右上角点一个小色点（彩色牌本身就能看出颜色）
+    // 万能牌没有颜色：用价签色在边框上跑流动条（跟打牌堆的万能牌一个样式），不再放右上角色点
     if (slot.card.color === 'none') {
-      const tag = document.createElement('i');
-      tag.className = 'price-dot';
-      tag.style.background = { red: '#e04040', yellow: '#e8d020', green: '#30b050', blue: '#3070d0' }[slot.priceColor] || '#888';
-      tag.title = '用' + (COLOR_NAME[slot.priceColor] || '') + '色买';
-      el.appendChild(tag);
+      el.style.setProperty('--ring-color', COLOR_HEX[slot.priceColor] || '#fff');
+      const ring = document.createElement('span');
+      ring.className = 'price-ring';
+      ring.title = '用' + (COLOR_NAME[slot.priceColor] || '') + '色买';
+      ring.innerHTML = '<i></i><i></i><i></i><i></i>';
+      el.appendChild(ring);
     }
 
     if (!isSpectator) {
@@ -977,9 +978,10 @@ function renderGame(state) {
   // 顶牌
   paintTopCard($('top-card'), state.topCard, state.currentColor);
 
-  // 万能牌/加四牌：用当前颜色的动态线框围住顶牌，避免看不出选了什么颜色
+  // 万能牌/加四牌：用当前颜色的流动线框围住顶牌，避免看不出选了什么颜色
+  // 两种卡面风格都用同一套流动条，不再用纯色外边框
   const topIsWild = !!state.topCard && (state.topCard.type === 4 || state.topCard.type === 5);
-  const showRing = isOfficialUI() && topIsWild && !!state.currentColor && !state.wildPending;
+  const showRing = topIsWild && !!state.currentColor && !state.wildPending;
   $('top-card-wrap').classList.toggle('show-ring', showRing);
   if (showRing) {
     $('top-card-wrap').style.setProperty('--ring-color', COLOR_HEX[state.currentColor] || '#fff');
