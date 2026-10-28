@@ -481,9 +481,10 @@ input:focus { border-color: #6c7bff; }
   #center-area { transform: translate(-50%, -46%); }
 }
 
-/* 万能牌当前颜色提示：四条线贴在牌的边框内侧来回滑动（不能超出牌面，否则像光标飘在外面） */
+/* 万能牌当前颜色提示：四条线围着顶牌外围来回滑动。
+   偏移要小（原来 -12px 在正常版大牌上刚好，但有岁模式中间牌更小，就显得跑到牌外面去了） */
 .top-card-wrap { position: relative; display: flex; }
-.wild-ring { display: none; position: absolute; inset: 3px; border-radius: 8px; overflow: hidden; pointer-events: none; }
+.wild-ring { display: none; position: absolute; inset: -5px; border-radius: 12px; pointer-events: none; }
 .top-card-wrap.show-ring .wild-ring { display: block; }
 .wild-ring i {
   position: absolute; border-radius: 2px;
