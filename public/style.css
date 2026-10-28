@@ -350,16 +350,17 @@ input:focus { border-color: #6c7bff; }
 .pile-block { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .pile-label { font-size: 10px; color: #9aa6c8; letter-spacing: 1px; line-height: 1.2; }
 
-/* 中间牌尺寸：正常版只有"打牌堆 + 牌堆"两堆，用回原来的 1.3 倍大牌（看惯了、也够醒目）；
-   有岁模式还要多塞一个弃牌堆和上面的商店，才整体缩到 1.1 倍，否则会挤出屏幕/被两侧对手挡住 */
+/* 中间牌尺寸：两种模式统一用原来的 1.3 倍大牌（看惯了、也够醒目）。
+   只有商店商品单独小一号，四件要并排摆进屏幕 */
 #center-area .card {
   width: calc(var(--card-w) * 1.3);
   height: calc(var(--card-h) * 1.3);
   flex: 0 0 auto;
 }
-#center-area.has-shop .card {
-  width: calc(var(--card-w) * 1.1);
-  height: calc(var(--card-h) * 1.1);
+/* 商店商品要四件并排，不能跟着 1.3 倍放大 */
+#center-area .card.shop-card {
+  width: calc(var(--card-w) * 1.05);
+  height: calc(var(--card-h) * 1.05);
 }
 
 /* 弃牌堆：正面展示最上面一张（商店付款 / 刷新换下的旧货），后面的牌用错位卡边暗示厚度 */
@@ -464,11 +465,8 @@ input:focus { border-color: #6c7bff; }
   /* 中间整块往上挪，给下方的手牌/状态条留位置，也避开左右两侧的对手面板 */
   #center-area { gap: 6px; transform: translate(-50%, -66%); }
   #pile-row { gap: 9px; }
-  #center-area .card { width: calc(var(--card-w) * 0.9); height: calc(var(--card-h) * 0.9); }
-  /* 正常版没有弃牌堆和商店，两堆用原来的大牌就够放，不用缩 */
-  #center-area:not(.has-shop) .card { width: calc(var(--card-w) * 1.3); height: calc(var(--card-h) * 1.3); }
-  /* 商店牌再小一号，四张并排才不会被两侧对手挡住 */
-  #center-area .card.shop-card { width: calc(var(--card-w) * 0.76); height: calc(var(--card-h) * 0.76); }
+  /* 商店商品必须四件并排，手机端收到 0.8 倍；其余中间牌保持 1.3 倍大牌 */
+  #center-area .card.shop-card { width: calc(var(--card-w) * 0.8); height: calc(var(--card-h) * 0.8); }
   .shop-panel { padding: 5px 6px; gap: 3px; }
   .shop-title { font-size: 9px; letter-spacing: 0; }
   .shop-items { gap: 4px; }
@@ -776,11 +774,6 @@ input:focus { border-color: #6c7bff; }
 
 .hand-card.official { font-size: calc(var(--card-w) * 0.52); }
 .card.official { font-size: calc(var(--card-h) * 0.56); }
-/* 有商店时中间牌缩了一号，字号跟着收，否则数字/花色会顶出牌面 */
-#center-area.has-shop .card.official { font-size: calc(var(--card-h) * 0.46); }
-@media (max-width: 900px) {
-  #center-area.has-shop .card.official { font-size: calc(var(--card-h) * 0.38); }
-}
 
 .hand-card.official .cf, .card.official .cf {
   position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: block;
