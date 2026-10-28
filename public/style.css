@@ -472,6 +472,15 @@ input:focus { border-color: #6c7bff; }
   .sold-tag { font-size: calc(var(--card-w) * 0.26); }
 }
 
+/* 屏幕够高的手机/窄屏：中间整块再往下放一点，商店不要顶在半空中。
+   矮屏（<700px 高）保持原来的 -66%，否则会和底部的状态条撞上 */
+@media (max-width: 900px) and (min-height: 700px) {
+  #center-area { transform: translate(-50%, -54%); }
+}
+@media (max-width: 900px) and (min-height: 840px) {
+  #center-area { transform: translate(-50%, -46%); }
+}
+
 /* 万能牌当前颜色提示：四条线贴在牌的边框内侧来回滑动（不能超出牌面，否则像光标飘在外面） */
 .top-card-wrap { position: relative; display: flex; }
 .wild-ring { display: none; position: absolute; inset: 3px; border-radius: 8px; overflow: hidden; pointer-events: none; }
