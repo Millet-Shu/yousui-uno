@@ -278,6 +278,8 @@ function publicRoomState(room, selfPlayer) {
 
 function addLog(room, msg) {
   room.log.push(msg);
+  // 只保最近的记录：长局里日志会无限增长，既占内存又拖慢每次广播
+  if (room.log.length > 120) room.log.splice(0, room.log.length - 120);
   console.log(`[${room.code}] ${msg}`);
 }
 
@@ -393,6 +395,14 @@ function grabLead(room, playerId) {
   room.currentIndex = leadIdx;
 
   let starter = room.drawPile.pop();
+  // 牌堆见底（有岁模式商店会先抽走 4 张，极端情况可能抽空）先洗回再抽，避免 starter 为 null 直接崩
+  if (!starter) { reshuffleIntoDraw(room); starter = room.drawPile.pop(); }
+  if (!starter) {
+    addLog(room, '牌不够，无法发起始牌，回到等待区');
+    room.status = 'waiting';
+    broadcastRoom(room);
+    return;
+  }
   let guard = 0;
   while (starter && isWild(starter) && guard < 20) {
     room.drawPile.unshift(starter);
@@ -402,7 +412,11 @@ function grabLead(room, playerId) {
 
   room.playPile.push(starter);
   room.topCard = starter;
-  room.currentColor = starter.color;
+  // 连续抽到万能牌导致循环用尽 guard 时，起始牌仍是万能牌（color = none），必须随机给一个颜色，
+  // 否则 currentColor 会是 'none'，之后谁都出不了牌、整个对局卡死
+  room.currentColor = isWild(starter)
+    ? COLORS[Math.floor(Math.random() * COLORS.length)]
+    : starter.color;
   room.status = 'playing';
 
   addLog(room, `${room.players[room.currentIndex].name} 抢到先手！起始牌 ${cardName(starter)}`);
@@ -616,17 +630,19 @@ function openGrabWindow(room, playedBy) {
       return;
     }
 
-    room.grabAvailable = { card: lastCard, playedBy: playedBy.name, candidates };
+    const win = { card: lastCard, playedBy: playedBy.name, candidates };
+    room.grabAvailable = win;
     for (const p of aiGrabbers) {
       setTimeout(() => {
-        if (room.grabAvailable && room.grabAvailable.candidates.some(c => c.playerId === p.id)) {
-          grabCard(room, p.id);
-        }
+        // 必须比对同一个窗口对象：否则上一次窗口的残留定时器会误抢新窗口里的牌
+        if (room.grabAvailable !== win) return;
+        if (!win.candidates.some(c => c.playerId === p.id)) return;
+        grabCard(room, p.id);
       }, 1000 + Math.random() * 900);
     }
-    // 3 秒内没人抢就自动关闭，防止卡住游戏
+    // 3 秒内没人抢就自动关闭，防止卡住游戏（同样按窗口对象比对，避免误关新窗口）
     setTimeout(() => {
-      if (room.grabAvailable && room.grabAvailable.candidates === candidates) {
+      if (room.grabAvailable === win) {
         // 窗口过期：抢牌候选人在窗口里"提前喊"的标记作废，避免带到之后的回合
         closeGrabWindow(room);
         broadcastRoom(room);
@@ -869,9 +885,15 @@ function buyShopCard(room, playerId, slot, payIndex) {
   room.shop[slot] = { sold: true };  // 卖掉的位置留空，四件都卖光才补货
   addLog(room, `${player.name} 用 ${cardName(pay)} 在商店换走了 ${cardName(goods.card)}`);
 
-  // 买牌也是"本回合已行动"：上一张牌的举报窗口关闭，喊牌飘带收起
-  room.pendingReport = null;
-  room.unoBadge = null;
+  // 买牌也是"本回合已行动"：上一张牌的举报窗口关闭。
+  // 但如果这个举报窗口正是针对自己的（刚出到剩 1 张没喊），不能靠买牌躲掉，得留着
+  if (room.pendingReport && room.pendingReport.playerId !== player.id) room.pendingReport = null;
+  // 喊牌标记：买牌是"自己的行动"，保留自己的，其他人的作废（跟出牌/抢牌一致）
+  const keepUnoCall = !!room.unoCalled[player.id];
+  for (const pid in room.unoCalled) room.unoCalled[pid] = false;
+  if (keepUnoCall) room.unoCalled[player.id] = true;
+  // 飘带同理：自己的留着，别人的收起
+  if (room.unoBadge && room.unoBadge.playerId !== player.id) room.unoBadge = null;
 
   // 买牌直接过回合：既然来买，说明手上没有能出的牌
   closeGrabWindow(room);
@@ -1151,10 +1173,15 @@ function aiShopVisit(room, player) {
 }
 
 // 商店动作的定时器：回合没变、还是这个 AI、没暂停才执行（否则这一手作废，等重新排程）
+// 同时占住本回合的"AI 行动槽"，避免这 1 秒里又被 scheduleAiTurn 排一次（会变成瞬间连动两下）
 function scheduleAiShopAction(room, player, fn) {
   const seq = room.turnSeq;
   const pid = player.id;
+  room.aiTurnPending = true;
+  room.aiTurnSeq = seq;
   setTimeout(() => {
+    // 先释放行动槽：fn 里买牌/摸牌会推进回合并重新排程
+    if (room.aiTurnSeq === seq) { room.aiTurnPending = false; room.aiTurnSeq = null; }
     if (room.turnSeq !== seq) return;
     if (room.status !== 'playing' || room.paused) return;
     const cur = room.players[room.currentIndex];
@@ -1550,6 +1577,7 @@ io.on('connection', (socket) => {
           room.pendingReport = null;
           room.pendingDraw = 0;
           room.pendingDrawType = null;
+          room.shopRerollUsed = false;   // 换人接手这一回合，刷新次数跟着重置
         }
       }
     }

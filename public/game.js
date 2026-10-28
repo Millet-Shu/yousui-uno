@@ -847,6 +847,24 @@ function paintTopCard(el, card) {
   el.querySelector('.card-label').textContent = cardText(card);
 }
 
+// 这张牌现在能不能打在顶牌上：规则与服务端 isPlayable 完全一致
+// （罚牌叠加只认 +2/+4；万能牌随时能打；同色 / 同数字 / 同功能可以打）
+function matchesTop(card, state) {
+  const pd = state.pendingDraw || 0;
+  const pdt = state.pendingDrawType || 0;
+  if (pd > 0 && pdt) {
+    if (pdt === 5) return card.type === 5;                     // 顶着 +4：只能用 +4 反击
+    if (pdt === 3) return card.type === 3 || card.type === 5;  // 顶着 +2：+2 / +4 都能叠
+  }
+  if (card.color === 'none') return true;                      // 万能牌 / 加四
+  if (card.color === state.currentColor) return true;
+  const top = state.topCard;
+  if (!top) return false;
+  if (card.type === 0 && top.type === 0 && card.value === top.value) return true;
+  if (card.type === top.type && card.type !== 0) return true;
+  return false;
+}
+
 // ===== 有岁商店渲染 =====
 // 服务端每格是 { card, priceColor, sold }，这里统一取出来；兼容直接给牌对象的旧结构
 function shopSlotOf(shop, i) {
@@ -928,7 +946,7 @@ function renderShop(state) {
           if ((hand[shopPayIndex] || {}).color !== s2.priceColor) shopPayIndex = null;
         }
         // 手牌也要跟着重绘，才能把可付款的牌标出来
-        renderGame(currentGameState || state);
+        renderGame(state);
       };
     }
     itemsEl.appendChild(el);
@@ -1205,7 +1223,7 @@ function renderGame(state) {
   // 有岁商店（不管是不是观战都渲染，观战只读）
   renderShop(state);
 
-  // ✅ 手牌：排序时带上 originalIndex，避免 indexOf 错位
+  // 手牌：排序时带上 originalIndex，避免 indexOf 错位
   const handEl = $('hand-area');
   handEl.innerHTML = '';
 
@@ -1229,11 +1247,9 @@ function renderGame(state) {
 
   indexed.forEach(({ card, originalIndex }) => {
     const div = document.createElement('div');
-    let playable = myTurn && !state.wildPending && state.status === 'playing';
-    if (playable && state.pendingDraw > 0) {
-      // 与服务端叠加规则保持一致：罚牌为 +4 时只能用 +4 反击，+2 也变暗
-      playable = state.pendingDrawType === 5 ? card.type === 5 : (card.type === 3 || card.type === 5);
-    }
+    // 自己回合 + 这张牌真的能打在顶牌上（与服务端 isPlayable 同一套规则），否则变暗
+    const myPlayTime = myTurn && !state.wildPending && state.status === 'playing';
+    let playable = myPlayTime && matchesTop(card, state);
     // wildPending 时整手牌禁用（必须通过颜色弹窗选色，防止乱点把 currentColor 置 null）
     // 可抢牌：手上有和刚打出的牌完全一样的牌（包括自己刚打出的，可连出）
     const canGrabCard = !myTurn && state.status === 'playing' && !state.wildPending && state.grabAvailable &&
@@ -1282,6 +1298,18 @@ function renderGame(state) {
       };
     } else {
       div.classList.add('dim');
+      // 打不出去的牌变暗；仍然允许点（服务端会拒绝），万一漏判也不会变成"点不动"
+      if (myPlayTime) {
+        div.title = '这张打不出去：要和顶牌同色 / 同数字 / 同功能，或者用万能牌';
+        div.onclick = () => {
+          if (div.classList.contains('selected')) {
+            socket.emit('playCard', { cardIndex: originalIndex });
+          } else {
+            document.querySelectorAll('.hand-card.selected').forEach(d => d.classList.remove('selected'));
+            div.classList.add('selected');
+          }
+        };
+      }
     }
     handEl.appendChild(div);
   });

@@ -605,7 +605,8 @@ input:focus { border-color: #6c7bff; }
   box-shadow: 0 3px 8px rgba(0,0,0,0.4);
 }
 .hand-card:hover { transform: translateY(-15px); box-shadow: 0 10px 18px rgba(0,0,0,0.5); }
-.hand-card.dim { opacity: 0.4; cursor: not-allowed; }
+/* 打不出去的牌：变暗但仍可点（服务端会拒绝），所以不要用 not-allowed 手势 */
+.hand-card.dim { opacity: 0.45; }
 .hand-card.dim:hover { transform: none; }
 .hand-card.red { background: #e04040; }
 .hand-card.yellow { background: #e8d020; color: #333; }
