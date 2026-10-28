@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>有岁 UNO</title>
-<link rel="stylesheet" href="style.css?v=56">
+<link rel="stylesheet" href="style.css?v=60">
 </head>
 <body>
 
@@ -232,6 +232,11 @@
         <input id="bgm-volume" class="volume-slider" type="range" min="0" max="100" step="1" value="35">
         <span id="bgm-volume-value" class="volume-value">35%</span>
       </div>
+      <div class="settings-row">
+        <span>曲目</span>
+        <select id="bgm-track" class="turn-select"></select>
+      </div>
+      <div id="bgm-track-note" class="settings-note">内置曲是实时合成的；外部曲目把文件放进 public/music/ 就能选</div>
 
       <h4 class="settings-title">音效</h4>
       <div class="settings-row">
@@ -301,6 +306,7 @@
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="game.js?v=70"></script>
+<script src="layout.js?v=2"></script>
+<script src="game.js?v=72"></script>
 </body>
 </html>

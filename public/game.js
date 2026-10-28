@@ -213,8 +213,16 @@ function saveCfg(key, cfg) {
 // ===== 背景音乐 =====
 const BGM = (() => {
   const KEY = 'uno_bgm';
-  const cfg = loadCfg(KEY, { on: true, vol: 0.35 });
-  let step = 0, started = false;
+  const cfg = loadCfg(KEY, { on: true, vol: 0.35, track: 'synth' });
+
+  // 曲目表：src 为空 = 现场合成的内置曲；外部曲目把文件放进 public/music/，在这里加一行即可
+  const TRACKS = [
+    { id: 'synth', name: '内置 · 轻音乐（合成）' },
+    { id: 'wind', name: 'The Wind Sings（纯音乐）', src: 'music/the-wind-sings.mp3' },
+  ];
+  let step = 0, timer = null, audioEl = null, fileTrack = null, fileMissing = false;
+
+  function currentTrack() { return TRACKS.find(t => t.id === cfg.track) || TRACKS[0]; }
 
   // 8 小节循环：C - G/B - Am - F - C - Em - F - G，比 4 个和弦更长，不容易听腻
   const BARS = [
@@ -276,26 +284,78 @@ const BGM = (() => {
 
   function applyGain() {
     const ctx = AudioCore.ctx, bus = AudioCore.bgm;
-    if (!ctx || !bus) return;
-    const target = cfg.on ? cfg.vol * 0.45 : 0;
-    bus.gain.cancelScheduledValues(ctx.currentTime);
-    bus.gain.setTargetAtTime(target, ctx.currentTime, 0.15);
+    if (ctx && bus) {
+      // 放外部曲目时把合成总线静音（它自带音量），否则两条音乐叠在一起
+      const target = cfg.on && !currentTrack().src ? cfg.vol * 0.45 : 0;
+      bus.gain.cancelScheduledValues(ctx.currentTime);
+      bus.gain.setTargetAtTime(target, ctx.currentTime, 0.15);
+    }
+    if (audioEl) audioEl.volume = cfg.on ? Math.min(1, cfg.vol) : 0;
+  }
+
+  // 合成曲起停：timer 存在就是正在走，重复 start 不会叠出第二条
+  function synthOn() {
+    if (timer) return;
+    tick();
+    timer = setInterval(tick, STEP_MS);
+  }
+  function synthOff() {
+    if (timer) { clearInterval(timer); timer = null; }
+  }
+
+  // 外部曲目：一首 <audio> 循环播放。文件没放进来时回退内置曲并提示，
+  // 避免"选了歌却一直没声音"的错觉
+  function playFile(t) {
+    if (!audioEl) {
+      audioEl = new Audio();
+      audioEl.loop = true;
+      audioEl.preload = 'auto';
+      audioEl.addEventListener('error', () => {
+        if (!fileTrack || cfg.track !== fileTrack.id) return;
+        fileMissing = true;
+        cfg.track = 'synth'; saveCfg(KEY, cfg);
+        fileTrack = null;
+        syncBgmTrackUi();
+        synthOn();
+        applyGain();
+      });
+    }
+    if (fileTrack !== t) {
+      fileTrack = t;
+      audioEl.src = t.src;
+    }
+    audioEl.volume = cfg.on ? Math.min(1, cfg.vol) : 0;
+    if (!cfg.on) return;
+    const p = audioEl.play();
+    if (p && p.catch) p.catch(() => {});   // 自动播放被拦下：等下一次交互再试
   }
 
   function start() {
     if (!AudioCore.ensure()) return;
     AudioCore.resume();
+    if (!cfg.on) { if (audioEl) audioEl.pause(); return; }
+    const t = currentTrack();
+    if (t.src) { synthOff(); playFile(t); }
+    else { if (audioEl) audioEl.pause(); synthOn(); }
     applyGain();
-    if (started) return;
-    started = true;
-    tick();
-    setInterval(tick, STEP_MS);
   }
 
   return {
     config: () => cfg,
     start,
-    applyGain,
+    tracks: () => TRACKS,
+    isFileMissing: () => fileMissing,
+    // 切曲目：合成曲与外部曲目互斥，切换时把另一条关掉
+    setTrack(id) {
+      cfg.track = TRACKS.some(t => t.id === id) ? id : 'synth';
+      saveCfg(KEY, cfg);
+      fileMissing = false;   // 换曲目先清掉上次的"文件缺失"提示，真失败会重新置位
+      // 只暂停、不动 src：清空 src 会触发一次假的 error，把刚选的新曲子误判成"没文件"
+      if (audioEl) audioEl.pause();
+      fileTrack = null;
+      start();
+      return currentTrack();
+    },
     setOn(v) {
       cfg.on = !!v; saveCfg(KEY, cfg);
       start();            // 用户在设置里操作也算一次交互，可以解锁播放
@@ -351,11 +411,6 @@ const SFX = (() => {
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(flt); flt.connect(g); g.connect(bus);
     src.start(t, 0, Math.min(dur + 0.05, 0.49));
-  }
-
-  // 兼容旧调用：固定频率的噪声
-  function noiseBurst(dur, freq, q, peak) {
-    noiseHit(dur, freq, q, peak);
   }
 
   function tone(freq, dur, peak, type, when, slideTo) {
@@ -512,7 +567,10 @@ function playStateSounds(state) {
   if (!fresh.length) return;
 
   const text = fresh.join(' | ');
-  if (/获胜|游戏结束/.test(text)) { SFX.play('win'); return; }
+  // 设置类日志（改时限、换模式）不该配任何游戏音效：以前兜底成"打牌"声，
+  // 于是房主一调回合时限就会听到"啪"的一下
+  if (/回合时限|模式设为/.test(text)) return;
+  if (/获胜|游戏结束|本局结束/.test(text)) { SFX.play('win'); return; }
   if (/换走了|买走/.test(text)) { SFX.play('coin'); return; }      // 商店买牌：金币叮当
   if (/刷新了商店/.test(text)) { SFX.play('reroll'); return; }     // 刷新商店：轻"唰"
   if (/抢/.test(text)) { SFX.play('grab'); return; }          // 抢牌优先：常带跳过/反转，不能被覆盖
@@ -520,7 +578,7 @@ function playStateSounds(state) {
   if (/方向反转/.test(text)) { SFX.play('reverse'); return; }
   if (/跳过/.test(text)) { SFX.play('skip'); return; }
   if (/罚|摸/.test(text)) { SFX.play('draw'); return; }
-  SFX.play('card');
+  if (/打出/.test(text)) SFX.play('card');   // 只有真的打出牌才用"啪"声，别的日志一律静音
 }
 
 // ===== 回合计时显示 =====
@@ -571,12 +629,35 @@ function paintTurnTimer() {
 setInterval(paintTurnTimer, 250);
 
 // ===== 设置面板（规则 + 音乐 + 音效）=====
+// 曲目下拉：选项由 BGM 的曲目表生成，以后加曲子只改那张表
+function syncBgmTrackUi() {
+  const sel = $('bgm-track');
+  if (sel) {
+    if (sel.options.length !== BGM.tracks().length) {
+      sel.innerHTML = '';
+      BGM.tracks().forEach(t => {
+        const o = document.createElement('option');
+        o.value = t.id;
+        o.textContent = t.name;
+        sel.appendChild(o);
+      });
+    }
+    sel.value = BGM.config().track;
+  }
+  const note = $('bgm-track-note');
+  if (note) note.textContent = BGM.isFileMissing()
+    ? '没找到这个曲目文件，已退回内置音乐（放到 public/music/ 下就会自动用上）'
+    : '内置曲是实时合成的；外部曲目把文件放进 public/music/ 就能选';
+}
+
 function openSettings() {
   const b = BGM.config(), s = SFX.config();
   $('toggle-bgm').checked = b.on;
   $('bgm-volume').value = Math.round(b.vol * 100);
   $('bgm-volume').disabled = !b.on;
   $('bgm-volume-value').textContent = Math.round(b.vol * 100) + '%';
+  syncBgmTrackUi();
+  $('bgm-track').disabled = !b.on;
   $('toggle-sfx').checked = s.on;
   $('sfx-volume').value = Math.round(s.vol * 100);
   $('sfx-volume').disabled = !s.on;
@@ -598,6 +679,12 @@ $('settings-modal').onclick = (e) => {
 $('toggle-bgm').onchange = (e) => {
   BGM.setOn(e.target.checked);
   $('bgm-volume').disabled = !e.target.checked;
+  $('bgm-track').disabled = !e.target.checked;
+};
+$('bgm-track').onchange = (e) => {
+  SFX.play('click');
+  BGM.setTrack(e.target.value);
+  syncBgmTrackUi();
 };
 $('bgm-volume').oninput = (e) => {
   const pct = Number(e.target.value);
@@ -615,7 +702,7 @@ $('sfx-volume').oninput = (e) => {
   SFX.play('click');   // 拖动时顺便试听音量
 };
 
-// 房主设置回合时限：改完立刻生效（对局中改会按新时限给当前这一手重新计时）
+// 房主设置回合时限：对局中改动从下一回合起生效，不会把正在走的倒计时重置
 function syncTurnLimitUi(state) {
   if (!state) return;
   const sec = Math.max(0, Math.round((state.turnLimit === undefined ? 30000 : state.turnLimit) / 1000));
@@ -632,7 +719,7 @@ function syncTurnLimitUi(state) {
   sel.disabled = !state.isOwner;
   const note = $('turn-limit-note');
   if (note) note.textContent = state.isOwner
-    ? '超时会自动摸牌并跳过（选「不限时」就不催人）· 只有房主能改'
+    ? '改时限从下一回合起生效 · 超时自动摸牌并跳过 · 只有房主能改'
     : '只有房主能改；超时会自动摸牌并跳过';
 }
 $('turn-limit-select').onchange = (e) => {
@@ -948,6 +1035,17 @@ function faceHtml(card) {
     `<span class="cf-tl">${sym}</span><span class="cf-br">${sym}</span></span>`;
 }
 
+// 万能牌当前颜色提示：四条彩色光条在边框上流动。
+// 打牌堆的 .wild-ring 固定写在 HTML 里；商店的价签条（.price-ring）由这里按需生成
+function makeCardRing(host, colorHex, title) {
+  host.style.setProperty('--ring-color', colorHex || '#fff');
+  const ring = document.createElement('span');
+  ring.className = host.classList.contains('shop-card') ? 'price-ring' : 'wild-ring';
+  if (title) ring.title = title;
+  ring.innerHTML = '<i></i><i></i><i></i><i></i>';
+  host.appendChild(ring);
+}
+
 // 绘制一张正面朝上的牌：两种风格共用。
 // 标签用 class 而不是 id，这样"打牌堆 / 弃牌堆"能各自画各自的牌，不会互相覆盖
 function paintTopCard(el, card) {
@@ -1041,18 +1139,11 @@ function renderShop(state) {
     const color = slot.card.color === 'none' ? 'none' : slot.card.color;
     el.className = 'card shop-card ' + (isOfficialUI() ? 'official ' : '') + color;
     if (shopPick === i) el.classList.add('selected');
-    const havePay = hand.some(c => c.color === slot.priceColor);
-    if (isSpectator || !canBuy || !havePay) el.classList.add('dim');
     if (isOfficialUI()) el.innerHTML = faceHtml(slot.card);
     else el.textContent = cardText(slot.card);
     // 万能牌没有颜色：用价签色在边框上跑流动条（跟打牌堆的万能牌一个样式），不再放右上角色点
     if (slot.card.color === 'none') {
-      el.style.setProperty('--ring-color', COLOR_HEX[slot.priceColor] || '#fff');
-      const ring = document.createElement('span');
-      ring.className = 'price-ring';
-      ring.title = '用' + (COLOR_NAME[slot.priceColor] || '') + '色买';
-      ring.innerHTML = '<i></i><i></i><i></i><i></i>';
-      el.appendChild(ring);
+      makeCardRing(el, COLOR_HEX[slot.priceColor], '用' + (COLOR_NAME[slot.priceColor] || '') + '色买');
     }
 
     if (!isSpectator) {
@@ -1368,7 +1459,8 @@ function renderGame(state) {
 
   indexed.forEach(({ card, originalIndex }) => {
     const div = document.createElement('div');
-    // 自己回合 + 这张牌真的能打在顶牌上（与服务端 isPlayable 同一套规则），否则变暗
+    // 自己回合 + 这张牌真的能打在顶牌上（与服务端 isPlayable 同一套规则）。
+    // 打不出去的牌也保持亮着、也能点选，只是不会真的打出去
     const myPlayTime = myTurn && !state.wildPending && state.status === 'playing';
     let playable = myPlayTime && matchesTop(card, state);
     // wildPending 时整手牌禁用（必须通过颜色弹窗选色，防止乱点把 currentColor 置 null）
@@ -1385,7 +1477,7 @@ function renderGame(state) {
     if (shopPick !== null && currentGameState && Array.isArray(currentGameState.shop)) {
       const slot = shopSlotOf(currentGameState.shop, shopPick);
       const sameColor = !!slot.card && card.color === slot.priceColor;
-      div.classList.add(sameColor ? 'payable' : 'unpayable');
+      if (sameColor) div.classList.add('payable');
       if (sameColor && shopPayIndex === originalIndex) div.classList.add('selected');
       div.onclick = () => {
         if (!sameColor) {
@@ -1418,8 +1510,7 @@ function renderGame(state) {
         }
       };
     } else {
-      div.classList.add('dim');
-      // 打不出去的牌变暗；仍然允许点（服务端会拒绝），万一漏判也不会变成"点不动"
+      // 打不出去的牌不再变暗（整手牌一律保持亮着），点选后由服务端拒绝并给出提示
       if (myPlayTime) {
         div.title = '这张打不出去：要和顶牌同色 / 同数字 / 同功能，或者用万能牌';
         div.onclick = () => {
@@ -1447,6 +1538,9 @@ function renderGame(state) {
     handEl.classList.toggle('scrollable', need > handEl.clientWidth + 1);
     handEl.scrollLeft = handScrollLeft;
   });
+
+  // 中间区（商店 + 三个牌堆）按实际可用空间摆放，避开对手面板和底部控件
+  requestAnimationFrame(() => { if (window.fitCenterArea) window.fitCenterArea(); });
 }
 
 // 颜色选择

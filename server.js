@@ -1394,16 +1394,30 @@ io.on('connection', (socket) => {
     broadcastRoom(room);
   });
 
-  // 房主设定回合时限（秒）；0 = 不限时。0~120 秒之间取整，改完立刻按新时限重起表
+  // 房主设定回合时限（秒）；0 = 不限时。0~120 秒之间取整。
+  // 对局中改动只影响"下一回合"：正在走的这一手保持原来的倒计时，
+  // 不能因为房主改了个数字就把别人快到的超时重置掉。
   socket.on('setTurnLimit', ({ seconds } = {}) => {
     const room = currentRoom;
     if (!room || !isRoomOwner(room, socket.id, currentPlayerId)) return;
     const sec = Math.min(Math.max(Math.round(Number(seconds) || 0), 0), 120);
+    const prev = turnLimitOf(room);
     room.turnLimit = sec * 1000;
-    addLog(room, sec ? `回合时限设为 ${sec} 秒` : '回合计时已关闭（不限时）');
-    // 对局中改动：当前这一手按新时限重新计时，避免"剩 2 秒却被调成 60 秒"的落差
-    if (room.status === 'playing' && !room.paused) startTurnClock(room, sec ? room.turnLimit : null);
-    else stopTurnClock(room);
+    const running = room.status === 'playing' && !room.paused && !!room.turnDeadline;
+    addLog(room, sec
+      ? `回合时限设为 ${sec} 秒${running && prev ? '（下一回合起生效）' : ''}`
+      : '回合计时已关闭（不限时）');
+
+    if (!sec) {
+      // 关掉倒计时：停表并让前端把计时条收起来
+      stopTurnClock(room);
+      room.turnRemain = null;
+      room.turnClockId = (room.turnClockId || 0) + 1;
+    } else if (!prev && room.status === 'playing' && !room.paused) {
+      // 之前是不限时，现在刚开：这一手才开始倒计时，给满新时限不算抢时间
+      startTurnClock(room);
+    }
+    // 其余情况（正在倒计时又改了秒数）什么都不做：新时限从下一次换人起才套用
     broadcastRoom(room);
   });
 

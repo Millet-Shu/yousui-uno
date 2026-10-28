@@ -256,7 +256,7 @@ input:focus { border-color: #6c7bff; }
 #game-room-code { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: bold; color: #ffd700; background: rgba(0,0,0,0.3); padding: 6px 16px; border-radius: 8px; z-index: 10; }
 /* 自己的名字：贴在手牌正下方居中，自己随时能看到自己在场上的名字 */
 .game-my-name {
-  position: absolute; bottom: 7px; left: 50%;
+  position: absolute; bottom: 12px; left: 50%;
   transform: translateX(-50%);
   max-width: 60vw; padding: 3px 12px;
   font-size: 12px; font-weight: 600; color: #dfe6ff;
@@ -339,6 +339,7 @@ input:focus { border-color: #6c7bff; }
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  transform-origin: top center;   /* layout.js 缩放整块时保持顶部位置与水平中心 */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -351,13 +352,13 @@ input:focus { border-color: #6c7bff; }
 .pile-label { font-size: 10px; color: #9aa6c8; letter-spacing: 1px; line-height: 1.2; }
 
 /* 中间牌尺寸：两种模式统一用原来的 1.3 倍大牌（看惯了、也够醒目）。
-   只有商店商品单独小一号，四件要并排摆进屏幕 */
+   屏幕实在放不下时由 layout.js 把整块等比缩小，这里只定义"理想尺寸" */
 #center-area .card {
   width: calc(var(--card-w) * 1.3);
   height: calc(var(--card-h) * 1.3);
   flex: 0 0 auto;
 }
-/* 商店商品要四件并排，不能跟着 1.3 倍放大 */
+/* 商店商品比牌堆小一号：本来就要四件并排，自己有一套更小的尺寸 */
 #center-area .card.shop-card {
   width: calc(var(--card-w) * 1.05);
   height: calc(var(--card-h) * 1.05);
@@ -424,7 +425,6 @@ input:focus { border-color: #6c7bff; }
 /* 非官方卡面的纯色底统一写在"顶牌 / 弃牌堆 / 商店"共用那一组里，见 #top-card 附近的规则 */
 .card.shop-card:hover { transform: translateY(-4px); }
 .card.shop-card.selected { box-shadow: 0 0 0 3px #ffd040, 0 8px 20px rgba(0,0,0,.5); transform: translateY(-6px); }
-.card.shop-card.dim { opacity: .45; }
 /* 已售罄：空格子 + 斜着的"已售罄" */
 .card.shop-card.sold {
   background: rgba(255,255,255,0.05);
@@ -439,17 +439,9 @@ input:focus { border-color: #6c7bff; }
   font-weight: 700; color: rgba(255,255,255,0.55);
   letter-spacing: 1px; white-space: nowrap;
 }
-/* 价签流动条：万能牌没有颜色，用价签色在边框上跑四条短光条，提示"要用什么颜色买" */
+/* 价签流动条：万能牌没有颜色，用价签色在边框上跑四条短光条，提示"要用什么颜色买"。
+   光条本身的样式与打牌堆的 .wild-ring 共用，见下方那一组 */
 .price-ring { position: absolute; inset: 1px; pointer-events: none; }
-.price-ring i {
-  position: absolute; border-radius: 2px;
-  background: var(--ring-color, #fff);
-  box-shadow: 0 0 6px var(--ring-color, #fff);
-}
-.price-ring i:nth-child(1) { top: 1px;    height: 2px; width: 30%; animation: ring-x 1.6s ease-in-out infinite alternate; }
-.price-ring i:nth-child(2) { bottom: 1px; height: 2px; width: 30%; animation: ring-x 1.6s ease-in-out infinite alternate-reverse; }
-.price-ring i:nth-child(3) { left: 1px;   width: 2px; height: 26%; animation: ring-y 1.6s ease-in-out infinite alternate; }
-.price-ring i:nth-child(4) { right: 1px;  width: 2px; height: 26%; animation: ring-y 1.6s ease-in-out infinite alternate-reverse; }
 .shop-hint { font-size: 10px; color: #9aa6c8; text-align: center; }
 
 #action-bar .btn-shop-buy {
@@ -457,13 +449,12 @@ input:focus { border-color: #6c7bff; }
   color: #062b12; font-weight: 700;
 }
 
-/* 商店选好后，手牌里同色的标绿、不同色的变暗 */
+/* 商店选好后，手牌里同色的标绿（其余不变暗，只是点了会提示"要X色"） */
 .hand-card.payable { box-shadow: 0 0 0 3px #57d76e, 0 6px 16px rgba(0,0,0,.45); }
-.hand-card.unpayable { opacity: .45; }
 
 @media (max-width: 900px) {
-  /* 中间整块往上挪，给下方的手牌/状态条留位置，也避开左右两侧的对手面板 */
-  #center-area { gap: 6px; transform: translate(-50%, -66%); }
+  /* 中间区的位置改由 layout.js 按可用空间计算，这里只管紧凑一点的间距和商店尺寸 */
+  #center-area { gap: 6px; }
   #pile-row { gap: 9px; }
   /* 商店商品必须四件并排，手机端收到 0.8 倍；其余中间牌保持 1.3 倍大牌 */
   #center-area .card.shop-card { width: calc(var(--card-w) * 0.8); height: calc(var(--card-h) * 0.8); }
@@ -477,29 +468,20 @@ input:focus { border-color: #6c7bff; }
   .sold-tag { font-size: calc(var(--card-w) * 0.26); }
 }
 
-/* 屏幕够高的手机/窄屏：中间整块再往下放一点，商店不要顶在半空中。
-   矮屏（<700px 高）保持原来的 -66%，否则会和底部的状态条撞上 */
-@media (max-width: 900px) and (min-height: 700px) {
-  #center-area { transform: translate(-50%, -54%); }
-}
-@media (max-width: 900px) and (min-height: 840px) {
-  #center-area { transform: translate(-50%, -46%); }
-}
-
-/* 万能牌当前颜色提示：四条线围着顶牌外围来回滑动。
-   偏移要小（原来 -12px 在正常版大牌上刚好，但有岁模式中间牌更小，就显得跑到牌外面去了） */
+/* 万能牌当前颜色提示：四条线围着顶牌外围来回滑动 */
 .top-card-wrap { position: relative; display: flex; }
 .wild-ring { display: none; position: absolute; inset: -5px; border-radius: 12px; pointer-events: none; }
 .top-card-wrap.show-ring .wild-ring { display: block; }
-.wild-ring i {
+/* 流动条本体：打牌堆的万能牌（.wild-ring）和商店万能牌的价签（.price-ring）共用一套 */
+.wild-ring i, .price-ring i {
   position: absolute; border-radius: 2px;
   background: var(--ring-color, #fff);
   box-shadow: 0 0 6px var(--ring-color, #fff);
 }
-.wild-ring i:nth-child(1) { top: 0;    height: 2px; width: 34%; animation: ring-x 1.7s ease-in-out infinite alternate; }
-.wild-ring i:nth-child(2) { bottom: 0; height: 2px; width: 34%; animation: ring-x 1.7s ease-in-out infinite alternate-reverse; }
-.wild-ring i:nth-child(3) { left: 0;   width: 2px; height: 30%; animation: ring-y 1.7s ease-in-out infinite alternate; }
-.wild-ring i:nth-child(4) { right: 0;  width: 2px; height: 30%; animation: ring-y 1.7s ease-in-out infinite alternate-reverse; }
+.wild-ring i:nth-child(1), .price-ring i:nth-child(1) { top: 1px;    height: 2px; width: 32%; animation: ring-x 1.65s ease-in-out infinite alternate; }
+.wild-ring i:nth-child(2), .price-ring i:nth-child(2) { bottom: 1px; height: 2px; width: 32%; animation: ring-x 1.65s ease-in-out infinite alternate-reverse; }
+.wild-ring i:nth-child(3), .price-ring i:nth-child(3) { left: 1px;   width: 2px; height: 28%; animation: ring-y 1.65s ease-in-out infinite alternate; }
+.wild-ring i:nth-child(4), .price-ring i:nth-child(4) { right: 1px;  width: 2px; height: 28%; animation: ring-y 1.65s ease-in-out infinite alternate-reverse; }
 @keyframes ring-x { from { left: 0; } to { left: 66%; } }
 @keyframes ring-y { from { top: 0; } to { top: 70%; } }
 
@@ -533,7 +515,8 @@ input:focus { border-color: #6c7bff; }
 /* 状态条居中：用 left/right + margin auto 居中，避免 transform 影响内部 fixed 菜单按钮 */
 #status-bar {
   position: absolute;
-  bottom: calc(var(--card-h) + 96px);
+  /* 比操作栏再抬高 16px：操作栏高 38px、状态条高 35px，两者原本会压 10px */
+  bottom: calc(var(--card-h) + 112px);
   left: 0;
   right: 0;
   margin: 0 auto;
@@ -639,9 +622,7 @@ input:focus { border-color: #6c7bff; }
   box-shadow: 0 3px 8px rgba(0,0,0,0.4);
 }
 .hand-card:hover { transform: translateY(-15px); box-shadow: 0 10px 18px rgba(0,0,0,0.5); }
-/* 打不出去的牌：变暗但仍可点（服务端会拒绝），所以不要用 not-allowed 手势 */
-.hand-card.dim { opacity: 0.45; }
-.hand-card.dim:hover { transform: none; }
+/* 打不出去的牌不变暗，只是打出去会被服务端拒绝（牌面用 title 提示原因） */
 .hand-card.red { background: #e04040; }
 .hand-card.yellow { background: #e8d020; color: #333; }
 .hand-card.green { background: #30b050; }
@@ -721,9 +702,10 @@ input:focus { border-color: #6c7bff; }
   #status-bar { font-size: 12px; padding: 6px 12px; }
   /* 手机端：底部留出浏览器工具栏与安全区高度，手牌整体上移 */
   #hand-area { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); max-width: 100vw; padding: 18px 6px 6px; }
-  /* 按钮放到状态条上方；状态条贴近手牌，避免和下方对手面板撞在一起 */
+  /* 按钮放到状态条上方；状态条贴近手牌，避免和下方对手面板撞在一起。
+     状态条原本压着按钮 1px，这里下移 6px 落到按钮下方、手牌上沿 */
   #action-bar { bottom: calc(206px + env(safe-area-inset-bottom, 0px)); }
-  #status-bar { bottom: calc(174px + env(safe-area-inset-bottom, 0px)); }
+  #status-bar { bottom: calc(168px + env(safe-area-inset-bottom, 0px)); }
 }
 
 /* 横屏/矮屏（如手机横放）：压缩牌面与底部区域，避免纵向挤成一团 */
@@ -734,16 +716,21 @@ input:focus { border-color: #6c7bff; }
   #status-bar { bottom: calc(var(--card-h) + 72px); }
   .my-rank { bottom: calc(var(--card-h) + 104px); font-size: 16px; padding: 6px 16px; }
   #game-log, #game-spectators { display: none; }
-  #center-area { transform: translate(-50%, -58%); }
   .opp-hand { height: 34px; }
   .opp-card-back { width: 24px; height: 34px; }
   .opp-card-back + .opp-card-back { margin-left: -18px; }
 }
 
+/* 小屏手机（如 360x640）：竖直空间不够，收起商店提示文字，把高度让给牌堆 */
+@media (max-width: 900px) and (max-height: 700px) {
+  .shop-hint { display: none; }
+}
+
 /* 窄屏/手机：观战席移到左上角横排（放在房间号下方），避免被西侧对手的卡牌挡住 */
 @media (max-width: 900px) {
   #game-room-code { font-size: 14px; padding: 4px 12px; top: 10px; }
-  .game-my-name { bottom: calc(4px + env(safe-area-inset-bottom, 0px)); font-size: 11px; padding: 2px 10px; }
+  /* 自己的名字往上抬一点，别贴着屏幕最底下（手牌下方仍有 30px 以上空隙） */
+  .game-my-name { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); font-size: 11px; padding: 2px 10px; }
   #game-spectators {
     left: 6px; top: 48px; transform: none;
     flex-direction: row; align-items: center; gap: 4px;
@@ -888,6 +875,8 @@ body.in-game .btn-settings { right: 60px; }
 }
 .turn-select:disabled { opacity: .45; cursor: default; }
 .turn-select option { background: #1b2140; color: #e8ecff; }
+/* 曲目名比较长，别把整行撑开 */
+#bgm-track { max-width: 62%; }
 .settings-note { margin: -6px 0 14px; font-size: 11px; color: #8d97bb; }
 
 .rules-scroll {
