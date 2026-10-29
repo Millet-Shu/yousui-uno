@@ -135,7 +135,7 @@ input:focus { border-color: #6c7bff; }
 #action-bar {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--card-h) + 68px);
+  bottom: calc(var(--card-h) + 84px);
   transform: translateX(-50%);
   display: flex;
   flex-wrap: wrap;
@@ -174,7 +174,7 @@ input:focus { border-color: #6c7bff; }
   50% { box-shadow: 0 4px 22px rgba(255,180,60,.85); }
 }
 
-.my-rank { position: absolute; bottom: calc(var(--card-h) + 158px); left: 50%; transform: translateX(-50%); text-align: center; font-size: 22px; font-weight: bold; color: #ffd700; background: rgba(0,0,0,0.65); padding: 12px 28px; border-radius: 14px; z-index: 14; }
+.my-rank { position: absolute; bottom: calc(var(--card-h) + 174px); left: 50%; transform: translateX(-50%); text-align: center; font-size: 22px; font-weight: bold; color: #ffd700; background: rgba(0,0,0,0.65); padding: 12px 28px; border-radius: 14px; z-index: 14; }
 .uno-called { font-size: 12px; color: #ffd700; margin: 2px 0; }
 .owner-badge { display: inline-block; background: #ffd700; color: #000; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 4px; font-weight: bold; }
 .owner-badge-small { display: inline-block; background: #ffd700; color: #000; font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 4px; font-weight: bold; }
@@ -506,17 +506,26 @@ input:focus { border-color: #6c7bff; }
 /* 非官方卡面（有岁原生风格）用纯色底：打牌堆顶牌 / 弃牌堆 / 商店商品共用同一套颜色 */
 #top-card, #discard-pile { background: #555; }
 #top-card.red, #discard-pile.red, .card.shop-card:not(.official).red       { background: #e04040; }
-#top-card.yellow, #discard-pile.yellow, .card.shop-card:not(.official).yellow { background: #e8d020; color: #333; }
+#top-card.yellow, #discard-pile.yellow, .card.shop-card:not(.official).yellow { background: #e8d020; color: #fff; }
 #top-card.green, #discard-pile.green, .card.shop-card:not(.official).green  { background: #30b050; }
 #top-card.blue, #discard-pile.blue, .card.shop-card:not(.official).blue     { background: #3070d0; }
 #top-card.none, #discard-pile.none, #discard-pile.wild, .card.shop-card:not(.official).none { background: #333; }
 #top-card.wild { background: #333; }
+/* 有岁版：顶牌 / 弃牌堆 / 商店商品也加白色边框（岁牌除外），数字白色 */
+.card:not(.official):not(.skill):not(.back):not(.sold) {
+  border: 3px solid #fff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(0,0,0,0.1);
+}
+.card:not(.official):not(.skill):not(.back) .card-face {
+  position: relative; z-index: 1;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+}
 
 /* 状态条居中：用 left/right + margin auto 居中，避免 transform 影响内部 fixed 菜单按钮 */
 #status-bar {
   position: absolute;
   /* 比操作栏再抬高 16px：操作栏高 38px、状态条高 35px，两者原本会压 10px */
-  bottom: calc(var(--card-h) + 112px);
+  bottom: calc(var(--card-h) + 128px);
   left: 0;
   right: 0;
   margin: 0 auto;
@@ -571,7 +580,7 @@ input:focus { border-color: #6c7bff; }
 
 #game-log {
   position: absolute;
-  bottom: calc(var(--card-h) + 66px);
+  bottom: calc(var(--card-h) + 82px);
   left: 12px;
   width: 190px;
   max-height: 100px;
@@ -586,7 +595,7 @@ input:focus { border-color: #6c7bff; }
 
 #hand-area {
   position: absolute;
-  bottom: 34px;
+  bottom: 50px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -624,10 +633,20 @@ input:focus { border-color: #6c7bff; }
 .hand-card:hover { transform: translateY(-15px); box-shadow: 0 10px 18px rgba(0,0,0,0.5); }
 /* 打不出去的牌不变暗，只是打出去会被服务端拒绝（牌面用 title 提示原因） */
 .hand-card.red { background: #e04040; }
-.hand-card.yellow { background: #e8d020; color: #333; }
+.hand-card.yellow { background: #e8d020; color: #fff; }
 .hand-card.green { background: #30b050; }
 .hand-card.blue { background: #3070d0; }
 .hand-card.none { background: #333; }
+/* 有岁版卡面：除岁牌外都加白色边框（像原版 UNO 的白边），数字统一白色。
+   后续给图片时，把 background 换成图片即可，.card-face 里的数字会浮在图片上层 */
+.hand-card:not(.official):not(.skill) {
+  border: 3px solid #fff;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(0,0,0,0.1);
+}
+.hand-card:not(.official):not(.skill) .card-face {
+  position: relative; z-index: 1;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+}
 
 /* ===== 岁牌（技能牌）===== */
 /* 岁牌是"令"：暗紫底 + 金色印章，和万能牌的黑底区分开 */
@@ -747,20 +766,20 @@ input:focus { border-color: #6c7bff; }
   #action-bar .btn-grab-card { font-size: 12px; }
   #status-bar { font-size: 12px; padding: 6px 12px; }
   /* 手机端：底部留出浏览器工具栏与安全区高度，手牌整体上移 */
-  #hand-area { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); max-width: 100vw; padding: 18px 6px 6px; }
+  #hand-area { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); max-width: 100vw; padding: 18px 6px 6px; }
   /* 按钮放到状态条上方；状态条贴近手牌，避免和下方对手面板撞在一起。
      状态条原本压着按钮 1px，这里下移 6px 落到按钮下方、手牌上沿 */
-  #action-bar { bottom: calc(206px + env(safe-area-inset-bottom, 0px)); }
-  #status-bar { bottom: calc(168px + env(safe-area-inset-bottom, 0px)); }
+  #action-bar { bottom: calc(222px + env(safe-area-inset-bottom, 0px)); }
+  #status-bar { bottom: calc(184px + env(safe-area-inset-bottom, 0px)); }
 }
 
 /* 横屏/矮屏（如手机横放）：压缩牌面与底部区域，避免纵向挤成一团 */
 @media (max-height: 520px) {
   :root { --card-w: 42px; --card-h: 60px; }
-  #hand-area { bottom: 8px; padding: 14px 8px 4px; }
-  #action-bar { bottom: calc(var(--card-h) + 32px); }
-  #status-bar { bottom: calc(var(--card-h) + 72px); }
-  .my-rank { bottom: calc(var(--card-h) + 104px); font-size: 16px; padding: 6px 16px; }
+  #hand-area { bottom: 24px; padding: 14px 8px 4px; }
+  #action-bar { bottom: calc(var(--card-h) + 48px); }
+  #status-bar { bottom: calc(var(--card-h) + 88px); }
+  .my-rank { bottom: calc(var(--card-h) + 120px); font-size: 16px; padding: 6px 16px; }
   #game-log, #game-spectators { display: none; }
   .opp-hand { height: 34px; }
   .opp-card-back { width: 24px; height: 34px; }

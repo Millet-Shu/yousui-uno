@@ -992,21 +992,21 @@ function renderLobby(state) {
 const T_LABEL = { 0: '', 1: '⊘', 2: '⇄', 3: '+2', 4: '万能', 5: '+4', 6: '令' };
 
 // 座位坐标（百分比）：按对手数量选环，避开底部手牌区
-const SEAT_RING_1 = [{ x: 50, y: 20 }];
-const SEAT_RING_2 = [{ x: 85, y: 40 }, { x: 15, y: 40 }];
+const SEAT_RING_1 = [{ x: 50, y: 17 }];
+const SEAT_RING_2 = [{ x: 85, y: 37 }, { x: 15, y: 37 }];
 const SEAT_RING_3 = [
-  { x: 85, y: 50 },  // 东（我的右侧）
-  { x: 50, y: 20 },  // 北（对面）
-  { x: 15, y: 50 },  // 西（我的左侧）
+  { x: 85, y: 47 },  // 东（我的右侧）
+  { x: 50, y: 17 },  // 北（对面）
+  { x: 15, y: 47 },  // 西（我的左侧）
 ];
 // 4 个对手（自己观战时）：上排两张 + 左右各一张，不压中间牌堆
 const SEAT_RING_4 = [
-  { x: 85, y: 42 }, { x: 72, y: 15 }, { x: 28, y: 15 }, { x: 15, y: 42 },
+  { x: 85, y: 39 }, { x: 72, y: 12 }, { x: 28, y: 12 }, { x: 15, y: 39 },
 ];
 const SEAT_RING_8 = [
-  { x: 85, y: 68 }, { x: 85, y: 45 }, { x: 85, y: 22 },
-  { x: 50, y: 20 },
-  { x: 15, y: 22 }, { x: 15, y: 45 }, { x: 15, y: 68 },
+  { x: 85, y: 65 }, { x: 85, y: 42 }, { x: 85, y: 19 },
+  { x: 50, y: 17 },
+  { x: 15, y: 19 }, { x: 15, y: 42 }, { x: 15, y: 65 },
 ];
 
 function cardText(c) {
@@ -1064,17 +1064,16 @@ function paintTopCard(el, card) {
   const official = isOfficialUI();
   if (!card) {
     el.className = 'card' + (official ? ' official' : '');
-    el.style.boxShadow = 'none';
-    el.innerHTML = '<span class="card-label">?</span>';
+    el.innerHTML = '<span class="card-face">?</span>';
     return;
   }
   const cls = card.type === 6 ? 'skill' : (card.color === 'none' ? 'wild' : card.color);
   el.className = 'card ' + cls + (official ? ' official' : '');
-  // 万能牌不再用纯色外框表示颜色，统一改成边框上的彩色流动条（#top-card-wrap .wild-ring）
-  el.style.boxShadow = 'none';
+  // 万能牌颜色用边框上的彩色流动条表示（#top-card-wrap .wild-ring），不靠 box-shadow
   if (official) { el.innerHTML = faceHtml(card); return; }
-  el.innerHTML = '<span class="card-label"></span>';
-  el.querySelector('.card-label').textContent = cardText(card);
+  // 有岁版：用 .card-face 包裹数字，后续换图片时数字浮在上层
+  el.innerHTML = '<span class="card-face"></span>';
+  el.querySelector('.card-face').textContent = cardText(card);
 }
 
 // 这张牌现在能不能打在顶牌上：规则与服务端 isPlayable 完全一致
@@ -1154,7 +1153,7 @@ function renderShop(state) {
     el.className = 'card shop-card ' + colorCls + (isOfficialUI() ? ' official' : '');
     if (shopPick === i) el.classList.add('selected');
     if (isOfficialUI()) el.innerHTML = faceHtml(slot.card);
-    else el.textContent = cardText(slot.card);
+    else { el.innerHTML = '<span class="card-face"></span>'; el.querySelector('.card-face').textContent = cardText(slot.card); }
     // 万能牌没有颜色：用价签色在边框上跑流动条（跟打牌堆的万能牌一个样式），不再放右上角色点
     if (slot.card.color === 'none') {
       makeCardRing(el, COLOR_HEX[slot.priceColor], '用' + (COLOR_NAME[slot.priceColor] || '') + '色买');
@@ -1514,7 +1513,7 @@ function renderGame(state) {
     else if (myStunned) div.title = '昏头中：这回合出不了牌，点摸牌堆随机摸 1~3 张';
     else if (fakeWild) div.title = '眼花：这张会当成万能牌打出去，打出后选颜色';
     if (isOfficialUI()) div.innerHTML = faceHtml(card);
-    else div.textContent = cardText(card);
+    else { div.innerHTML = '<span class="card-face"></span>'; div.querySelector('.card-face').textContent = cardText(card); }
     // 眼花：在牌上叠一层"万能"的残影（模糊、一闪一闪），让人看见的是假万能牌。
     // 必须放在设置牌面之后，否则会被 innerHTML/textContent 覆盖掉
     if (showWildGhost) {
