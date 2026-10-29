@@ -1304,9 +1304,10 @@ function renderGame(state) {
   });
 
   // 状态栏
+  const me = state.players.find(p => p.isYou);
   const myTurn = state.players.find(p => p.isYou && p.isCurrent);
-  const myStunned = !!(myTurn && myTurn.stunned);   // 昏头：这回合只能摸牌
-  const myDrunk = !!(myTurn && myTurn.drunk);       // 眼花：手牌会看成万能牌
+  const myStunned = !!(me && me.stunned);   // 昏头：这回合不能出牌，只能摸牌
+  const myDrunk = !!(me && me.drunk);       // 眼花：非万能的牌都看成万能牌
   if (state.status === 'over') {
     $('status-text').textContent = '游戏结束！';
   } else if (state.status === 'grabbing') {
@@ -1365,7 +1366,6 @@ function renderGame(state) {
   }
 
   // 我的名次
-  const me = state.players.find(p => p.isYou);
   // 左上角显示自己的名字（观战者不显示）
   const myNameEl = $('game-my-name');
   if (me && !isSpectator) {
@@ -1415,11 +1415,8 @@ function renderGame(state) {
   // 抢牌按钮：我可以抢牌时显示（服务器已按候选人过滤）
   $('btn-grab-card').classList.toggle('hidden', !state.grabAvailable);
 
-  // 昏头：出不了牌，只能摸（服务端随机摸 1~3 张后直接换人），给个显眼按钮
-  if (myTurn && state.status === 'playing' && myStunned) {
-    $('btn-pass').textContent = '🍶 昏头：随便摸';
-    $('btn-pass').classList.remove('hidden');
-  } else if (myTurn && state.status === 'playing' && !state.wildPending && state.pendingDraw > 0) {
+  // 昏头时不出按钮：手牌直接灰掉，玩家点摸牌堆走这一手（服务端会随机摸 1~3 张）
+  if (myTurn && state.status === 'playing' && !state.wildPending && !myStunned && state.pendingDraw > 0) {
     $('btn-pass').textContent = `不出(摸${state.pendingDraw}张)`;
     $('btn-pass').classList.remove('hidden');
   } else {
@@ -1467,6 +1464,19 @@ function renderGame(state) {
   // 有岁商店（不管是不是观战都渲染，观战只读）
   renderShop(state);
 
+  // 「令」的负面效果：贴在手牌正上方写清楚现在处于哪一段
+  const debuffEl = $('hand-debuff');
+  if (isSpectator || (!myStunned && !myDrunk)) {
+    debuffEl.className = 'hand-debuff hidden';
+  } else if (myStunned) {
+    debuffEl.className = 'hand-debuff stunned';
+    debuffEl.textContent = '🍶 昏头：这回合出不了牌，点牌堆会摸 1~3 张';
+  } else {
+    const left = me.drunkLeft || 0;
+    debuffEl.className = 'hand-debuff drunk';
+    debuffEl.textContent = `🍶 眼花：手上的牌都看成万能牌${left ? `（还剩 ${left} 回合）` : ''}`;
+  }
+
   // 手牌：排序时带上 originalIndex，避免 indexOf 错位
   const handEl = $('hand-area');
   handEl.innerHTML = '';
@@ -1496,11 +1506,11 @@ function renderGame(state) {
     // 昏头时什么牌都不能出，只能摸牌
     const myPlayTime = myTurn && !state.wildPending && state.status === 'playing' && !myStunned;
     const isSkill = card.type === 6;
-    // 眼花：非万能牌被看成万能牌（只影响"看起来"，昏头那一手也照样闪，只是打不出去）
-    const showWildGhost = !!myDrunk && !state.wildPending && state.pendingDraw === 0
+    // 眼花（令的第一段负面）：只有"不是万能牌"的牌才会被看成万能牌（真万能牌和 +4 保持原样）
+    const showWildGhost = !!myDrunk && !state.wildPending
       && card.type !== 4 && card.type !== 5 && !isSkill;
-    // 真能当万能牌打出去：还得是自己回合、没昏头（顶着罚牌时按真实规则走）
-    const fakeWild = showWildGhost && myPlayTime;
+    // 真能当万能牌打出去：自己回合 + 没昏头 + 没顶着罚牌（顶罚牌时按真实规则走）
+    const fakeWild = showWildGhost && myPlayTime && state.pendingDraw === 0;
     let playable = isSkill
       ? (myPlayTime && state.pendingDraw === 0)
       : (fakeWild || (myPlayTime && matchesTop(card, state)));
@@ -1511,8 +1521,10 @@ function renderGame(state) {
       card.type === state.grabAvailable.card.type &&
       card.value === state.grabAvailable.card.value;
     div.className = 'hand-card ' + (isSkill ? 'skill' : (card.color || 'none')) + (isOfficialUI() ? ' official' : '');
+    // 昏头：整手牌灰掉、不能点（这一手靠点摸牌堆过去）
+    if (myStunned) div.classList.add('locked');
     if (showWildGhost) div.classList.add('fake-wild');
-    if (isSkill) div.title = '岁牌 · 令：把手上的牌按概率变成万能牌，代价是昏头 1 回合、眼花 2 回合（不占回合，打完还是你的回合）';
+    if (isSkill) div.title = '岁牌 · 令：接下来 2 个回合眼花（手牌都看成万能牌，能当万能牌打），之后 1 个回合昏头（出不了牌，摸牌会摸 1~3 张）；不占回合';
     else if (myStunned) div.title = '昏头中：这回合出不了牌，点摸牌堆随机摸 1~3 张';
     else if (fakeWild) div.title = '眼花：这张会当成万能牌打出去，打出后选颜色';
     if (isOfficialUI()) div.innerHTML = faceHtml(card);

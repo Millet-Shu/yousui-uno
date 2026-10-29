@@ -98,16 +98,15 @@ const TURN_LIMIT = 30000;
 const SHOP_SIZE = 4;
 
 // ===== 岁牌·令 的参数 =====
-const SKILL_CONVERT_CHANCE = 0.7;          // 手上每张非万能牌变成万能牌的概率
-const SKILL_FOUR_SHARE = 0.35;             // 变出来的万能牌里有多少是 +4（其余是变色万能）
-const STUN_TURNS = 1;                      // 其中第一个回合昏头：不能出牌，只能摸牌
-const DRUNK_TURNS = 2;                     // 昏头那一手之后，还有两个回合能拿"假万能牌"出牌
+// 「令」一张牌都不改，只给人添负面状态：先眼花、再昏头
+const DRUNK_TURNS = 2;                     // 眼花 2 个回合：手上非万能的牌都看成万能牌（也能当万能牌打）
+const STUN_TURNS = 1;                      // 眼花走完之后昏头 1 个回合：不能出牌，只能摸牌
+const DIZZY_TURNS = DRUNK_TURNS + STUN_TURNS;
 const DRUNK_DRAW_WEIGHTS = [0.6, 0.3, 0.1]; // 昏头摸牌：摸 1 / 2 / 3 张的概率（张数越多越少见）
 
-// 昏头：这回合不能出牌，只能把牌摸进来
-function isStunned(p) { return !!p && p.stunTurns > 0; }
-// 醉酒（眼花）：手上的牌会被看成万能牌，可以当万能牌打
-function isDrunk(p) { return !!p && p.drunkTurns > 0; }
+// 用一个倒计时表示「令」的负面：剩得多的那几回合是眼花，最后 STUN_TURNS 回合变成昏头
+function isStunned(p) { return !!p && p.dizzyTurns > 0 && p.dizzyTurns <= STUN_TURNS; }
+function isDrunk(p) { return !!p && p.dizzyTurns > STUN_TURNS; }
 
 // 昏头时摸几张：按权重抽 1~3 张
 function rollDrunkDraw() {
@@ -289,8 +288,9 @@ function publicRoomState(room, selfPlayer) {
       rank: p.rank || null,
       unoCalled: !!room.unoCalled[p.id],
       unoAnnounced: !!(room.unoBadge && room.unoBadge.playerId === p.id),
-      stunned: isStunned(p),        // 昏头：这回合不能出牌
-      drunk: isDrunk(p),            // 醉酒（眼花）：手牌会看成万能牌
+      stunned: isStunned(p),        // 昏头：这回合不能出牌，只能摸牌
+      drunk: isDrunk(p),            // 眼花：非万能的牌都看成万能牌
+      drunkLeft: Math.max(0, (p.dizzyTurns || 0) - STUN_TURNS),  // 还剩几个回合眼花
       isOwner: p.id === room.ownerPlayerId,
       isYou: p.id === selfId,
       isCurrent: room.players[room.currentIndex] && room.players[room.currentIndex].id === p.id
@@ -408,7 +408,7 @@ function startGame(room) {
   for (const p of room.players) {
     p.hand = []; p.finished = false; p.rank = null; p.unoCalled = false;
     p.aiProxy = !!p.offline;  // 开局就离线的玩家由 AI 代理
-    p.stunTurns = 0; p.drunkTurns = 0;   // 新的一局：昏头/醉酒状态清零
+    p.dizzyTurns = 0;   // 新的一局：「令」的负面（眼花/昏头）清零
   }
 
   for (let i = 0; i < 7; i++) {
@@ -617,24 +617,11 @@ function useSkillCard(room, player, cardIndex) {
   if (room.status !== 'over') scheduleIfAuto(room, AI_DELAY_EXTRA);
 }
 
-// 令：手上非万能牌按概率变成万能牌（+4 更稀有），代价是昏头 + 两个回合眼花
+// 令：一张牌都不动，只给负面状态——接下来 DRUNK_TURNS 个回合眼花（非万能的牌都看成万能牌），
+// 眼花走完之后再昏头 STUN_TURNS 个回合（出不了牌，摸牌会摸 1~3 张）
 function applyDecree(room, player) {
-  let converted = 0, fours = 0;
-  player.hand = player.hand.map(c => {
-    if (isWild(c) || isSkillCard(c)) return c;
-    if (Math.random() >= SKILL_CONVERT_CHANCE) return c;
-    converted++;
-    if (Math.random() < SKILL_FOUR_SHARE) { fours++; return { color: 'none', type: T.WILD_DRAW_FOUR }; }
-    return { color: 'none', type: T.WILD };
-  });
-  addLog(room, converted
-    ? `${player.name} 眼花：${converted} 张牌变成万能牌（其中 ${fours} 张 +4）`
-    : `${player.name} 眼花，可一张牌都没变`);
-
-  player.stunTurns = STUN_TURNS;
-  // 昏头那一手也戴着"眼花"（牌会闪、但不能出），这样之后还剩 DRUNK_TURNS 个能出牌的回合
-  player.drunkTurns = STUN_TURNS + DRUNK_TURNS;
-  addLog(room, `${player.name} 昏头了：这一手只能摸牌，之后两个回合眼花（手牌会闪成万能牌）`);
+  player.dizzyTurns = DIZZY_TURNS;
+  addLog(room, `${player.name} 中了「令」：眼花 ${DRUNK_TURNS} 回合（手牌都看成万能牌），之后昏头 ${STUN_TURNS} 回合`);
 }
 
 function handleCardEffect(room, player, card, chosenColor, asFakeWild = false) {
@@ -1051,11 +1038,8 @@ function advance(room, countTurn = true) {
     guard++;
   }
   room.currentIndex = next;
-  // 昏头/眼花按"自己的回合"结算：谁的回合走完，谁的计数减一
-  if (prev && countTurn) {
-    if (prev.stunTurns > 0) prev.stunTurns -= 1;
-    if (prev.drunkTurns > 0) prev.drunkTurns -= 1;
-  }
+  // 「令」的负面按"自己的回合"结算：谁的回合走完，谁的倒计时减一
+  if (prev && countTurn && prev.dizzyTurns > 0) prev.dizzyTurns -= 1;
   // ✅ 切换玩家时清理 justDrew
   room.justDrew = false;
   // 新回合开始：本回合的商店刷新次数重置
@@ -1319,7 +1303,7 @@ function aiTurn(room) {
   // 昏头：AI 也只能摸牌（drawCard 会按昏头规则摸 1~3 张后换人）
   if (isStunned(player)) { drawCard(room, player.id); return; }
 
-  // 岁牌：手牌还多、又没顶着罚牌时，有概率用「令」把烂牌变万能牌
+  // 岁牌：手牌还多、又没顶着罚牌时，有概率用「令」让自己接下来两个回合都能当万能牌打
   const skillIdx = player.hand.findIndex(c => isSkillCard(c));
   if (skillIdx >= 0 && room.pendingDraw === 0 && player.hand.length >= 4 && Math.random() < 0.5) {
     useSkillCard(room, player, skillIdx);
@@ -1398,7 +1382,7 @@ const AI_BUY_SCORE = 26;        // 净收益到这条线才值得买（买完这
 function aiCardValue(card, hand) {
   let v;
   if (card.type === T.WILD_DRAW_FOUR) v = 100;
-  else if (card.type === T.SKILL) v = 90;   // 岁牌：能把半手牌变万能牌，AI 眼里很香
+  else if (card.type === T.SKILL) v = 90;   // 岁牌：两个回合都能当万能牌打，AI 眼里很香
   else if (card.type === T.WILD) v = 82;
   else if (card.type === T.DRAW_TWO) v = 70;
   else if (card.type === T.SKIP || card.type === T.REVERSE) v = 46;
