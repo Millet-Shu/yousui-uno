@@ -424,20 +424,34 @@ input:focus { border-color: #6c7bff; }
 .card.shop-card:not(.official) { font-size: calc(var(--card-h) * 0.3); }
 /* 非官方卡面的纯色底统一写在"顶牌 / 弃牌堆 / 商店"共用那一组里，见 #top-card 附近的规则 */
 .card.shop-card:hover { transform: translateY(-4px); }
-.card.shop-card.selected { box-shadow: 0 0 0 3px #ffd040, 0 8px 20px rgba(0,0,0,.5); transform: translateY(-6px); }
-/* 已售罄：空格子 + 斜着的"已售罄" */
+/* 商店选中态：金色外框 + 上浮 + 轻微放大，白边之外再套一圈金框，一眼能看出选中了 */
+.card.shop-card.selected {
+  outline: 3px solid #ffd040;
+  outline-offset: 2px;
+  box-shadow: 0 0 14px rgba(255,208,64,0.6), 0 8px 20px rgba(0,0,0,.5);
+  transform: translateY(-6px) scale(1.04);
+}
+/* 已售罄：透明底 + 虚线框 + 居中"已售罄"，完全不能点 */
 .card.shop-card.sold {
-  background: rgba(255,255,255,0.05);
-  border: 1px dashed rgba(255,255,255,0.22);
-  box-shadow: none; cursor: default; opacity: .8;
+  background: transparent;
+  border: 2px dashed rgba(255,255,255,0.28);
+  box-shadow: none;
+  cursor: default;
+  pointer-events: none;
+  opacity: 1;
 }
 .card.shop-card.sold:hover { transform: none; }
 .sold-tag {
-  display: block; width: 100%; text-align: center;
-  transform: rotate(-24deg);
-  font-size: calc(var(--card-w) * 0.3);
-  font-weight: 700; color: rgba(255,255,255,0.55);
-  letter-spacing: 1px; white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: calc(var(--card-w) * 0.26);
+  font-weight: 700;
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 1px;
+  white-space: nowrap;
 }
 /* 价签流动条：万能牌没有颜色，用价签色在边框上跑四条短光条，提示"要用什么颜色买"。
    光条本身的样式与打牌堆的 .wild-ring 共用，见下方那一组 */
@@ -511,10 +525,10 @@ input:focus { border-color: #6c7bff; }
 #top-card.blue, #discard-pile.blue, .card.shop-card:not(.official).blue     { background: #3070d0; }
 #top-card.none, #discard-pile.none, #discard-pile.wild, .card.shop-card:not(.official).none { background: #333; }
 #top-card.wild { background: #333; }
-/* 有岁版：顶牌 / 弃牌堆 / 商店商品也加白色边框（岁牌除外），数字白色 */
+/* 有岁版：顶牌 / 弃牌堆 / 商店商品也加白色边框（岁牌除外），数字白色。
+   同手牌：只加 border，不写 box-shadow，避免盖住商店选中态的金框 */
 .card:not(.official):not(.skill):not(.back):not(.sold) {
   border: 3px solid #fff;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(0,0,0,0.1);
 }
 .card:not(.official):not(.skill):not(.back) .card-face {
   position: relative; z-index: 1;
@@ -638,10 +652,11 @@ input:focus { border-color: #6c7bff; }
 .hand-card.blue { background: #3070d0; }
 .hand-card.none { background: #333; }
 /* 有岁版卡面：除岁牌外都加白色边框（像原版 UNO 的白边），数字统一白色。
+   注意：这里只加 border，不写 box-shadow —— 选中态/可付款态的金框绿框靠 box-shadow 实现，
+   白边规则特异性更高，写了 box-shadow 会把它们盖住。
    后续给图片时，把 background 换成图片即可，.card-face 里的数字会浮在图片上层 */
 .hand-card:not(.official):not(.skill) {
   border: 3px solid #fff;
-  box-shadow: 0 3px 8px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(0,0,0,0.1);
 }
 .hand-card:not(.official):not(.skill) .card-face {
   position: relative; z-index: 1;
