@@ -1517,14 +1517,7 @@ function renderGame(state) {
     else if (fakeWild) div.title = '眼花：这张会当成万能牌打出去，打出后选颜色';
     if (isOfficialUI()) div.innerHTML = faceHtml(card);
     else { div.innerHTML = '<span class="card-face"></span>'; div.querySelector('.card-face').textContent = cardText(card); }
-    // 眼花：在牌上叠一层"万能"的残影（模糊、一闪一闪），让人看见的是假万能牌。
-    // 必须放在设置牌面之后，否则会被 innerHTML/textContent 覆盖掉
-    if (showWildGhost) {
-      const ghost = document.createElement('span');
-      ghost.className = 'ghost-wild';
-      ghost.textContent = '万能';
-      div.appendChild(ghost);
-    }
+    // 眼花：原牌面模糊 + ::after 伪元素叠一层万能牌外观（若影若现），不再额外插 DOM
 
     // 商店：选好商品后，这张手牌就是候选付款牌。选中后等"购买"按钮确认
     if (shopPick !== null && currentGameState && Array.isArray(currentGameState.shop)) {

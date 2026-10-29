@@ -686,25 +686,35 @@ input:focus { border-color: #6c7bff; }
   color: #ffdd7a; font-weight: 900; font-size: 1.5em; line-height: 1;
   text-shadow: 0 0 10px rgba(255,217,112,.55);
 }
-/* 眼花（醉酒）：牌面若隐若现地闪出万能牌的紫色光晕，看得出是"假的万能牌" */
-.hand-card.fake-wild { position: relative; animation: fakeWild 2.2s ease-in-out infinite; }
-/* 残影：模糊的"万能"字样，一闪一闪浮在牌面上 */
-.ghost-wild {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  font-size: 0.92em; font-weight: 900; letter-spacing: 1px;
-  color: #e3d6ff; text-shadow: 0 0 8px rgba(150,110,255,.95), 0 0 16px rgba(150,110,255,.7);
-  filter: blur(2.2px);
+/* 眼花（醉酒）：原牌面模糊看不清，再叠一层万能牌外观（黑底白字"万能"）若影若现 */
+.hand-card.fake-wild { position: relative; overflow: hidden; }
+/* 原牌面模糊 + 降低可见度，让人看不清真实牌面 */
+.hand-card.fake-wild .card-face,
+.hand-card.fake-wild .cf {
+  filter: blur(5px) saturate(0.4);
+  opacity: 0.3;
+}
+/* 万能牌覆盖层：黑底 + "万能"白字，透明度来回变化营造若影若现 */
+.hand-card.fake-wild::after {
+  content: "万能";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 30, 30, 0.72);
+  border-radius: inherit;
+  color: #fff;
+  font-weight: 900;
+  font-size: 1.05em;
+  letter-spacing: 1px;
+  text-shadow: 0 0 8px rgba(150, 110, 255, 0.7);
   pointer-events: none;
-  animation: ghostWild 2.2s ease-in-out infinite;
+  animation: wildFlicker 2.4s ease-in-out infinite;
 }
-@keyframes ghostWild {
-  0%, 22%, 100% { opacity: 0; filter: blur(3px); }
-  40%, 62%      { opacity: .85; filter: blur(1.6px); }
-}
-@keyframes fakeWild {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(150,110,255,0), 0 3px 8px rgba(0,0,0,.4); filter: none; }
-  40%      { box-shadow: 0 0 0 3px rgba(150,110,255,.85), 0 0 18px rgba(150,110,255,.75); filter: blur(.6px) saturate(1.35); }
-  60%      { box-shadow: 0 0 0 1px rgba(150,110,255,.35), 0 0 8px rgba(150,110,255,.35); filter: blur(.2px) saturate(1.1); }
+@keyframes wildFlicker {
+  0%, 100% { opacity: 0.35; }
+  45%, 55% { opacity: 0.88; }
 }
 /* 对手面板上的"昏头/眼花"标记 */
 .drunk-badge { display: inline-block; margin-top: 4px; padding: 2px 8px; background: #6a4bb5; color: #fff; border-radius: 10px; font-size: 12px; font-weight: bold; }
