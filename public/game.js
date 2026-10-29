@@ -1531,6 +1531,13 @@ function renderGame(state) {
     else { div.innerHTML = '<span class="card-face"></span>'; div.querySelector('.card-face').textContent = cardText(card); }
     // 眼花：原牌面模糊 + ::after 伪元素叠一层万能牌外观（若影若现），不再额外插 DOM
 
+    // 昏头：整手牌灰掉、点不动（这一手点摸牌堆摸 1~3 张就过去了）
+    if (myStunned) {
+      div.onclick = null;
+      handEl.appendChild(div);
+      return;
+    }
+
     // 商店：选好商品后，这张手牌就是候选付款牌。选中后等"购买"按钮确认
     if (shopPick !== null && currentGameState && Array.isArray(currentGameState.shop)) {
       const slot = shopSlotOf(currentGameState.shop, shopPick);
