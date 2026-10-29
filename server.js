@@ -12,7 +12,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ==================== UNO 核心逻辑 ====================
 
 const COLORS = ['red', 'yellow', 'green', 'blue'];
-const T = { NUMBER: 0, SKIP: 1, REVERSE: 2, DRAW_TWO: 3, WILD: 4, WILD_DRAW_FOUR: 5 };
+// 6 = 岁牌（技能牌）。岁牌不进打牌堆顶、不改变当前颜色，用完直接回弃牌堆
+const T = { NUMBER: 0, SKIP: 1, REVERSE: 2, DRAW_TWO: 3, WILD: 4, WILD_DRAW_FOUR: 5, SKILL: 6 };
 
 function createDeck() {
   const cards = [];
@@ -34,6 +35,25 @@ function createDeck() {
   }
   return cards;
 }
+
+// ===== 岁牌（技能牌）=====
+// 以后要加更多岁牌，就在 SKILL_CARDS 里加一张，再在 SKILL_EFFECTS 里写它的效果即可，
+// 发牌/出牌/进弃牌堆/不计回合一概由 useSkillCard 统一处理
+const SKILL_CARDS = [
+  { key: 'decree', label: '令', copies: 2 },
+];
+
+function createSkillDeck() {
+  const out = [];
+  for (const s of SKILL_CARDS) {
+    for (let i = 0; i < s.copies; i++) {
+      out.push({ color: 'none', type: T.SKILL, value: s.key, label: s.label });
+    }
+  }
+  return out;
+}
+
+function isSkillCard(c) { return !!c && c.type === T.SKILL; }
 
 function shuffle(arr, rng = Math.random) {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -57,7 +77,7 @@ const MODE_RULES = {
   yousui: {
     label: '有岁 UNO',
     unoWord: '有岁',
-    buildDeck: () => createDeck(),   // 有岁专属牌后续在这里额外 push
+    buildDeck: () => createDeck().concat(createSkillDeck()),   // 有岁模式带上岁牌
     grabLead: true,
     grabExchange: true,
     shop: true,           // 有岁模式：正中间的商店，用同色手牌换牌
@@ -77,13 +97,36 @@ const TURN_LIMIT = 30000;
 // ===== 有岁商店 =====
 const SHOP_SIZE = 4;
 
+// ===== 岁牌·令 的参数 =====
+const SKILL_CONVERT_CHANCE = 0.7;          // 手上每张非万能牌变成万能牌的概率
+const SKILL_FOUR_SHARE = 0.35;             // 变出来的万能牌里有多少是 +4（其余是变色万能）
+const STUN_TURNS = 1;                      // 其中第一个回合昏头：不能出牌，只能摸牌
+const DRUNK_TURNS = 2;                     // 昏头那一手之后，还有两个回合能拿"假万能牌"出牌
+const DRUNK_DRAW_WEIGHTS = [0.6, 0.3, 0.1]; // 昏头摸牌：摸 1 / 2 / 3 张的概率（张数越多越少见）
+
+// 昏头：这回合不能出牌，只能把牌摸进来
+function isStunned(p) { return !!p && p.stunTurns > 0; }
+// 醉酒（眼花）：手上的牌会被看成万能牌，可以当万能牌打
+function isDrunk(p) { return !!p && p.drunkTurns > 0; }
+
+// 昏头时摸几张：按权重抽 1~3 张
+function rollDrunkDraw() {
+  const r = Math.random();
+  let acc = 0;
+  for (let i = 0; i < DRUNK_DRAW_WEIGHTS.length; i++) {
+    acc += DRUNK_DRAW_WEIGHTS[i];
+    if (r < acc) return i + 1;
+  }
+  return 1;
+}
+
 // 商品直接从牌堆拿牌（所以牌堆真的会少牌）。
-// 万能牌本身没有颜色，就在上架时随机给它定一个"价签颜色"，用同色牌就能买走。
+// 万能牌/岁牌本身没有颜色，就在上架时随机给它定一个"价签颜色"，用同色牌就能买走。
 function makeShopSlot(room) {
   if (room.drawPile.length === 0) reshuffleIntoDraw(room);
   const card = room.drawPile.pop() || null;
   if (!card) return null;
-  const priceColor = isWild(card)
+  const priceColor = (isWild(card) || card.color === 'none')
     ? COLORS[Math.floor(Math.random() * COLORS.length)]
     : card.color;
   return { card, priceColor, sold: false };
@@ -132,6 +175,7 @@ function cardName(c) {
     case T.DRAW_TWO: return cn[c.color] + '+2';
     case T.WILD: return '万能';
     case T.WILD_DRAW_FOUR: return '+4';
+    case T.SKILL: return '岁牌·' + (c.label || c.value || '?');
   }
 }
 
@@ -245,6 +289,8 @@ function publicRoomState(room, selfPlayer) {
       rank: p.rank || null,
       unoCalled: !!room.unoCalled[p.id],
       unoAnnounced: !!(room.unoBadge && room.unoBadge.playerId === p.id),
+      stunned: isStunned(p),        // 昏头：这回合不能出牌
+      drunk: isDrunk(p),            // 醉酒（眼花）：手牌会看成万能牌
       isOwner: p.id === room.ownerPlayerId,
       isYou: p.id === selfId,
       isCurrent: room.players[room.currentIndex] && room.players[room.currentIndex].id === p.id
@@ -362,6 +408,7 @@ function startGame(room) {
   for (const p of room.players) {
     p.hand = []; p.finished = false; p.rank = null; p.unoCalled = false;
     p.aiProxy = !!p.offline;  // 开局就离线的玩家由 AI 代理
+    p.stunTurns = 0; p.drunkTurns = 0;   // 新的一局：昏头/醉酒状态清零
   }
 
   for (let i = 0; i < 7; i++) {
@@ -423,7 +470,8 @@ function grabLead(room, playerId) {
     return;
   }
   let guard = 0;
-  while (starter && isWild(starter) && guard < 20) {
+  // 起始牌必须是带颜色的普通牌：万能牌和岁牌（color = none）都会让 currentColor 变成 none，谁都出不了牌
+  while (starter && (isWild(starter) || isSkillCard(starter)) && guard < 20) {
     room.drawPile.unshift(starter);
     starter = room.drawPile.pop();
     guard++;
@@ -433,7 +481,7 @@ function grabLead(room, playerId) {
   room.topCard = starter;
   // 连续抽到万能牌导致循环用尽 guard 时，起始牌仍是万能牌（color = none），必须随机给一个颜色，
   // 否则 currentColor 会是 'none'，之后谁都出不了牌、整个对局卡死
-  room.currentColor = isWild(starter)
+  room.currentColor = (isWild(starter) || isSkillCard(starter))
     ? COLORS[Math.floor(Math.random() * COLORS.length)]
     : starter.color;
   room.status = 'playing';
@@ -500,14 +548,24 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
 
   const card = player.hand[cardIndex];
   if (!card) return;
-  if (!isPlayable(card, room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType)) return;
+
+  // 昏头（令的副作用）：这回合什么牌都不能出，只能摸牌等 turn 过去
+  if (isStunned(player)) return;
+
+  // 岁牌：技能牌，用完回弃牌堆、不换人，只能在自己回合用（顶着罚牌时先处理罚牌）
+  if (isSkillCard(card)) {
+    if (room.pendingDraw > 0) return;
+    useSkillCard(room, player, cardIndex);
+    return;
+  }
+
+  // 眼花（醉酒）：手上的牌被看成万能牌，任何牌都能当万能牌打（要选色）；
+  // 但顶着罚牌时仍按真实规则走，不能靠眼花逃掉 +2/+4
+  const asFakeWild = isDrunk(player) && room.pendingDraw === 0 && !isWild(card);
+  if (!asFakeWild && !isPlayable(card, room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType)) return;
 
   const myUnoCalled = !!room.unoCalled[player.id];
   closeGrabWindow(room);  // 有人已行动，抢牌窗口关闭，并作废旧回合的定时器
-  for (const pid in room.unoCalled) {
-    room.unoCalled[pid] = false;
-  }
-  room.unoBadge = null;   // 进入下一回合，喊牌飘带随之消失
 
   player.hand.splice(cardIndex, 1);
   room.playPile.push(card);
@@ -516,26 +574,77 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
 
   // 又有人出牌 → 上一张牌留下的举报窗口立即失效
   // 举报只在"刚打完、还没人接着出"的间隙里有效，给没喊的人留一个逃脱机会
+  settleUnoAfterPlay(room, player, myUnoCalled);
+
+  handleCardEffect(room, player, card, chosenColor, asFakeWild);
+}
+
+// 手牌变少后统一结算"剩 1 张要喊、喊了才亮飘带、没喊可以被举报"
+function settleUnoAfterPlay(room, player, myUnoCalled) {
+  for (const pid in room.unoCalled) room.unoCalled[pid] = false;
+  room.unoBadge = null;   // 进入下一回合，喊牌飘带随之消失
   room.pendingReport = null;
-  // 没喊有岁就出到剩 1 张 → 可以被举报（直到下一张牌被打出/抢出，或 5 秒超时）
+  // 没喊有岁就出到剩 1 张 → 可以被举报（直到下一张牌被打出/抢出，或超时）
   if (room.status === 'playing' && player.hand.length === 1 && !myUnoCalled) {
     setPendingReport(room, player);
   }
-
-  // ✅ 修复：UNO 必须打完剩 <=1 张才算数（之前错写成 <=2）
+  // ✅ UNO 必须打完剩 <=1 张才算数（之前错写成 <=2）
   if (myUnoCalled && player.hand.length <= 1) {
     addLog(room, `${player.name} 喊了"${rulesOf(room).unoWord}"`);
     room.unoCalled[player.id] = true;
     setUnoBadge(room, player.id);   // 飘带亮到下一个回合开始
   }
-
-  handleCardEffect(room, player, card, chosenColor);
 }
 
-function handleCardEffect(room, player, card, chosenColor) {
-  addLog(room, `${player.name} 打出 ${cardName(card)}`);
+// ===== 岁牌使用：不换人、不占回合，牌回弃牌堆 =====
+function useSkillCard(room, player, cardIndex) {
+  const card = player.hand[cardIndex];
+  if (!isSkillCard(card) || room.wildPending) return;
+  if (room.status !== 'playing' || room.paused) return;
 
-  switch (card.type) {
+  const myUnoCalled = !!room.unoCalled[player.id];
+  closeGrabWindow(room);              // 有人已行动，抢牌窗口关闭
+  player.hand.splice(cardIndex, 1);
+  room.discardPile.push(card);        // 技能牌不压顶牌、不改当前颜色
+  room.justDrew = false;
+  addLog(room, `${player.name} 打出 ${cardName(card)}`);
+  settleUnoAfterPlay(room, player, myUnoCalled);
+
+  if (card.value === 'decree') applyDecree(room, player);
+
+  checkWin(room);
+  broadcastRoom(room);
+  if (room.status !== 'over') scheduleIfAuto(room, AI_DELAY_EXTRA);
+}
+
+// 令：手上非万能牌按概率变成万能牌（+4 更稀有），代价是昏头 + 两个回合眼花
+function applyDecree(room, player) {
+  let converted = 0, fours = 0;
+  player.hand = player.hand.map(c => {
+    if (isWild(c) || isSkillCard(c)) return c;
+    if (Math.random() >= SKILL_CONVERT_CHANCE) return c;
+    converted++;
+    if (Math.random() < SKILL_FOUR_SHARE) { fours++; return { color: 'none', type: T.WILD_DRAW_FOUR }; }
+    return { color: 'none', type: T.WILD };
+  });
+  addLog(room, converted
+    ? `${player.name} 眼花：${converted} 张牌变成万能牌（其中 ${fours} 张 +4）`
+    : `${player.name} 眼花，可一张牌都没变`);
+
+  player.stunTurns = STUN_TURNS;
+  // 昏头那一手也戴着"眼花"（牌会闪、但不能出），这样之后还剩 DRUNK_TURNS 个能出牌的回合
+  player.drunkTurns = STUN_TURNS + DRUNK_TURNS;
+  addLog(room, `${player.name} 昏头了：这一手只能摸牌，之后两个回合眼花（手牌会闪成万能牌）`);
+}
+
+function handleCardEffect(room, player, card, chosenColor, asFakeWild = false) {
+  addLog(room, `${player.name} 打出 ${cardName(card)}${asFakeWild ? '（眼花，当万能牌用）' : ''}`);
+
+  if (asFakeWild) {
+    // 眼花：牌本身还是原来那张（顶牌照旧），但颜色由自己指定
+    room.wildPending = true;
+    if (chosenColor) { resolveWildColor(room, player.id, chosenColor); return; }
+  } else switch (card.type) {
     case T.NUMBER:
       room.currentColor = card.color;
       advance(room);
@@ -545,7 +654,7 @@ function handleCardEffect(room, player, card, chosenColor) {
       advance(room);
       // 先记录被跳过的人是第一次换人后的那位，再推进一次
       const skipped = room.players[room.currentIndex];
-      advance(room);
+      advance(room, false);   // 被跳过的人没真的走过一回合，昏头/眼花的计数不该白扣
       addLog(room, `${skipped ? skipped.name : ''} 被跳过`);
       break;
     }
@@ -556,7 +665,7 @@ function handleCardEffect(room, player, card, chosenColor) {
         // 官方规则：2 人局反转等同"跳过"，对手被跳过、出牌者再来一回合
         const skipped = room.players[nextIndex(room)];
         advance(room);
-        advance(room);
+        advance(room, false);
         addLog(room, `方向反转（2 人局=跳过），${skipped ? skipped.name : ''} 被跳过`);
       } else {
         addLog(room, `方向反转`);
@@ -705,6 +814,19 @@ function drawCard(room, playerId) {
   if (room.justDrew) return;   // 本回合已摸过一张，防止连点摸牌堆无限摸牌
   closeGrabWindow(room);  // 当前玩家已行动，抢牌窗口关闭
 
+  // 昏头：不能出牌，只能把牌摸进来（1~3 张，张数越多越少见），摸完这一手就过去
+  if (isStunned(player) && room.pendingDraw === 0) {
+    const n = rollDrunkDraw();
+    const drawn = drawCards(room, n);
+    player.hand.push(...drawn);
+    addLog(room, `${player.name} 昏头中，手一抖摸到 ${drawn.length} 张牌，这回合就过去了`);
+    room.justDrew = false;
+    advance(room);
+    room.unoBadge = null;
+    broadcastRoom(room);
+    scheduleIfAuto(room);
+    return;
+  }
   // 有罚牌要摸
   if (room.pendingDraw > 0) {
     const drawn = drawCards(room, room.pendingDraw);
@@ -899,6 +1021,11 @@ function timeoutTurn(room) {
   }
 
   // 普通超时：摸一张就走（摸到能出的也直接过，挂机就是挂机）
+  // 昏头时按"昏头规则"走 drawCard 那条路（随机 1~3 张然后换人）
+  if (isStunned(player) && room.pendingDraw === 0) {
+    drawCard(room, player.id);
+    return;
+  }
   // 已经摸过牌的人（justDrew）不再补发，免得靠超时多摸一张
   const drawn = room.justDrew ? [] : drawCards(room, 1);
   if (drawn.length) player.hand.push(...drawn);
@@ -911,9 +1038,11 @@ function timeoutTurn(room) {
   scheduleIfAuto(room);
 }
 
-function advance(room) {
+// countTurn=false：只是"越过"某个人（被跳过），不算他走过一回合，昏头/眼花不扣
+function advance(room, countTurn = true) {
   const n = room.players.length;
   if (n === 0) return;
+  const prev = room.players[room.currentIndex];
   room.turnSeq = (room.turnSeq || 0) + 1;   // 回合切换：作废旧回合遗留的 AI 定时器
   let next = nextIndex(room, 1);
   let guard = 0;
@@ -922,6 +1051,11 @@ function advance(room) {
     guard++;
   }
   room.currentIndex = next;
+  // 昏头/眼花按"自己的回合"结算：谁的回合走完，谁的计数减一
+  if (prev && countTurn) {
+    if (prev.stunTurns > 0) prev.stunTurns -= 1;
+    if (prev.drunkTurns > 0) prev.drunkTurns -= 1;
+  }
   // ✅ 切换玩家时清理 justDrew
   room.justDrew = false;
   // 新回合开始：本回合的商店刷新次数重置
@@ -996,6 +1130,7 @@ function buyShopCard(room, playerId, slot, payIndex) {
   const player = room.players[room.currentIndex];
   if (!player || player.id !== playerId) return false;   // 只有当前回合的玩家能买
   if (room.wildPending || room.pendingDraw > 0) return false;  // 先处理选色/罚牌，别拿商店躲罚
+  if (isStunned(player)) return false;   // 昏头时连商店都逛不了，只能摸牌
 
   slot = parseInt(slot, 10);
   payIndex = parseInt(payIndex, 10);
@@ -1150,6 +1285,17 @@ function scheduleAiTurn(room, delay = AI_DELAY) {
 
 // ==================== AI ====================
 
+// 选万能牌/假万能牌的颜色：挑手上张数最多的颜色
+function bestHandColor(player) {
+  const counts = {};
+  for (const c of player.hand) {
+    if (c.color && c.color !== 'none') counts[c.color] = (counts[c.color] || 0) + 1;
+  }
+  let best = 'red';
+  for (const c in counts) if (counts[c] > (counts[best] || 0)) best = c;
+  return best;
+}
+
 function aiTurn(room) {
   if (room.status !== 'playing' || room.paused) return;
   const player = room.players[room.currentIndex];
@@ -1166,19 +1312,32 @@ function aiTurn(room) {
   }
 
   if (room.wildPending) {
-    const counts = {};
-    for (const c of player.hand) {
-      if (c.color !== 'none') counts[c.color] = (counts[c.color] || 0) + 1;
-    }
-    let best = 'red';
-    for (const c in counts) if (counts[c] > (counts[best] || 0)) best = c;
-    resolveWildColor(room, player.id, best);
+    resolveWildColor(room, player.id, bestHandColor(player));
     return;
   }
 
+  // 昏头：AI 也只能摸牌（drawCard 会按昏头规则摸 1~3 张后换人）
+  if (isStunned(player)) { drawCard(room, player.id); return; }
+
+  // 岁牌：手牌还多、又没顶着罚牌时，有概率用「令」把烂牌变万能牌
+  const skillIdx = player.hand.findIndex(c => isSkillCard(c));
+  if (skillIdx >= 0 && room.pendingDraw === 0 && player.hand.length >= 4 && Math.random() < 0.5) {
+    useSkillCard(room, player, skillIdx);
+    return;
+  }
+
+  // 眼花：非万能牌也能当万能牌打，挑一张并选自己手上最多的颜色
+  const fakeWild = isDrunk(player) && room.pendingDraw === 0;
+
   const playable = [];
   for (let i = 0; i < player.hand.length; i++) {
+    if (isSkillCard(player.hand[i])) continue;
     if (isPlayable(player.hand[i], room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType)) playable.push(i);
+  }
+
+  if (playable.length === 0 && fakeWild) {
+    const idx = player.hand.findIndex(c => !isWild(c) && !isSkillCard(c));
+    if (idx >= 0) { playCard(room, player.id, idx, bestHandColor(player)); return; }
   }
 
   if (playable.length === 0) {
@@ -1239,10 +1398,11 @@ const AI_BUY_SCORE = 26;        // 净收益到这条线才值得买（买完这
 function aiCardValue(card, hand) {
   let v;
   if (card.type === T.WILD_DRAW_FOUR) v = 100;
+  else if (card.type === T.SKILL) v = 90;   // 岁牌：能把半手牌变万能牌，AI 眼里很香
   else if (card.type === T.WILD) v = 82;
   else if (card.type === T.DRAW_TWO) v = 70;
   else if (card.type === T.SKIP || card.type === T.REVERSE) v = 46;
-  else v = 10 + (card.value || 0);
+  else v = 10 + (typeof card.value === 'number' ? card.value : 0);   // 岁牌的 value 是字符串，别拿来算数
 
   if (card.color !== 'none') {
     // 手上同色越多，这张越好打出去

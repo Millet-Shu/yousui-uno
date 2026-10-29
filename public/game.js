@@ -218,7 +218,6 @@ const BGM = (() => {
   // 曲目表：src 为空 = 现场合成的内置曲；外部曲目把文件放进 public/music/，在这里加一行即可
   const TRACKS = [
     { id: 'synth', name: '内置 · 轻音乐（合成）' },
-    { id: 'wind', name: 'The Wind Sings（纯音乐）', src: 'music/the-wind-sings.mp3' },
   ];
   let step = 0, timer = null, audioEl = null, fileTrack = null, fileMissing = false;
 
@@ -515,6 +514,14 @@ const SFX = (() => {
           tone(880, 0.1, 0.16, 'square', 0.015, 1320);
           break;
         }
+        case 'drunk': {    // 岁牌·令：一声下滑的"呜"（像喝多了天旋地转），再叠两下飘忽的铃
+          tone(520, 0.55, 0.20, 'sine', 0, 250);
+          tone(392, 0.5, 0.13, 'triangle', 0.06, 196);
+          tone(880, 0.35, 0.09, 'sine', 0.16, 700);
+          tone(660, 0.3, 0.07, 'sine', 0.30, 520);
+          noiseHit(0.10, 900, 0.7, 0.06, { attack: 0.15 });
+          break;
+        }
         case 'uno':       // 喊 UNO：明亮的和弦
           tone(523, 0.12, 0.16, 'triangle', 0);
           tone(659, 0.12, 0.16, 'triangle', 0.06);
@@ -573,6 +580,7 @@ function playStateSounds(state) {
   if (/获胜|游戏结束|本局结束/.test(text)) { SFX.play('win'); return; }
   if (/换走了|买走/.test(text)) { SFX.play('coin'); return; }      // 商店买牌：金币叮当
   if (/刷新了商店/.test(text)) { SFX.play('reroll'); return; }     // 刷新商店：轻"唰"
+  if (/岁牌|昏头|眼花/.test(text)) { SFX.play('drunk'); return; }   // 岁牌/醉酒状态
   if (/抢/.test(text)) { SFX.play('grab'); return; }          // 抢牌优先：常带跳过/反转，不能被覆盖
   if (/UNO|有岁/.test(text)) { SFX.play('uno'); return; }
   if (/方向反转/.test(text)) { SFX.play('reverse'); return; }
@@ -647,7 +655,7 @@ function syncBgmTrackUi() {
   const note = $('bgm-track-note');
   if (note) note.textContent = BGM.isFileMissing()
     ? '没找到这个曲目文件，已退回内置音乐（放到 public/music/ 下就会自动用上）'
-    : '内置曲是实时合成的；外部曲目把文件放进 public/music/ 就能选';
+    : '内置曲是实时合成的；以后加歌：把文件放进 public/music/，在 BGM.TRACKS 里加一行';
 }
 
 function openSettings() {
@@ -981,7 +989,7 @@ function renderLobby(state) {
 }
 
 // ===== 渲染游戏页 =====
-const T_LABEL = { 0: '', 1: '⊘', 2: '⇄', 3: '+2', 4: '万能', 5: '+4' };
+const T_LABEL = { 0: '', 1: '⊘', 2: '⇄', 3: '+2', 4: '万能', 5: '+4', 6: '令' };
 
 // 座位坐标（百分比）：按对手数量选环，避开底部手牌区
 const SEAT_RING_1 = [{ x: 50, y: 20 }];
@@ -1015,8 +1023,12 @@ const FACE_SYM = { 1: '⊘', 2: '⇄' };
 // 当前颜色对应的提示色（万能牌线框用）
 const COLOR_HEX = { red: '#ff5a52', yellow: '#ffd93d', green: '#57d76e', blue: '#54a6ff' };
 
-// 官方卡面：白色椭圆 + 两角小标；万能牌为四色椭圆，+4 为四张小牌
+// 官方卡面：白色椭圆 + 两角小标；万能牌为四色椭圆，+4 为四张小牌；岁牌是一枚"令"字印章
 function faceHtml(card) {
+  if (card.type === 6) {
+    return '<span class="cf"><span class="cf-seal">令</span>' +
+      '<span class="cf-tl">岁</span><span class="cf-br">令</span></span>';
+  }
   if (card.type === 4) {
     return '<span class="cf"><span class="cf-oval cf-rainbow"></span></span>';
   }
@@ -1056,7 +1068,8 @@ function paintTopCard(el, card) {
     el.innerHTML = '<span class="card-label">?</span>';
     return;
   }
-  el.className = 'card ' + (card.color === 'none' ? 'wild' : card.color) + (official ? ' official' : '');
+  const cls = card.type === 6 ? 'skill' : (card.color === 'none' ? 'wild' : card.color);
+  el.className = 'card ' + cls + (official ? ' official' : '');
   // 万能牌不再用纯色外框表示颜色，统一改成边框上的彩色流动条（#top-card-wrap .wild-ring）
   el.style.boxShadow = 'none';
   if (official) { el.innerHTML = faceHtml(card); return; }
@@ -1136,8 +1149,9 @@ function renderShop(state) {
       return;
     }
 
-    const color = slot.card.color === 'none' ? 'none' : slot.card.color;
-    el.className = 'card shop-card ' + (isOfficialUI() ? 'official ' : '') + color;
+    // 岁牌没有颜色，用 skill 类保持紫色印章外观；其余按颜色上色
+    const colorCls = slot.card.type === 6 ? 'skill' : (slot.card.color || 'none');
+    el.className = 'card shop-card ' + colorCls + (isOfficialUI() ? ' official' : '');
     if (shopPick === i) el.classList.add('selected');
     if (isOfficialUI()) el.innerHTML = faceHtml(slot.card);
     else el.textContent = cardText(slot.card);
@@ -1212,7 +1226,9 @@ function renderGame(state) {
   // 万能牌/加四牌：用当前颜色的流动线框围住顶牌，避免看不出选了什么颜色
   // 两种卡面风格都用同一套流动条，不再用纯色外边框
   const topIsWild = !!state.topCard && (state.topCard.type === 4 || state.topCard.type === 5);
-  const showRing = topIsWild && !!state.currentColor && !state.wildPending;
+  // 眼花打出的普通牌顶牌颜色和牌面颜色不一致，也要用流动条标出"现在打什么颜色"
+  const topColorMismatch = !!state.topCard && state.topCard.color !== 'none' && state.topCard.color !== state.currentColor;
+  const showRing = (topIsWild || topColorMismatch) && !!state.currentColor && !state.wildPending;
   $('top-card-wrap').classList.toggle('show-ring', showRing);
   if (showRing) {
     $('top-card-wrap').style.setProperty('--ring-color', COLOR_HEX[state.currentColor] || '#fff');
@@ -1260,6 +1276,10 @@ function renderGame(state) {
     const unoLabel = p.unoAnnounced ? `<div class="uno-called">📢 ${unoWord()}！</div>` : '';
     const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id && !p.isYou && !isSpectator)
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
+    // 岁牌副作用状态：昏头（这回合只能摸牌）/ 眼花（手牌看成万能牌）
+    const drunkLabel = (p.stunned || p.drunk)
+      ? `<div class="drunk-badge" title="${p.stunned ? '昏头：这回合只能摸牌' : '眼花：手牌被看成万能牌'}">${p.stunned ? '🍶 昏头' : '🍶 眼花'}</div>`
+      : '';
     let cardsHtml = '';
     // 最多显示 11 张牌背，叠放间距由 CSS 控制（居中、不撑出面板）
     // 只有超过 11 张（数不清了）才在最上面那张牌背写总数；没超过就数牌背，
@@ -1277,12 +1297,14 @@ function renderGame(state) {
     const proxyBadge = p.aiProxy ? '<span class="proxy-badge">AI代理</span>' : '';
     const ownerBadge = p.isOwner ? '<span class="owner-badge-small">房主</span>' : '';
     // ✅ 名字 escapeHtml
-    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${escapeHtml(p.name)}${onlineDot} ${ownerBadge}${proxyBadge}</div><div class="opp-hand">${cardsHtml}</div>${countLabel}${unoLabel}${penalty}${rankLabel}${reportBtn}`;
+    div.innerHTML = `<div class="name">${p.isCurrent ? '▶ ' : ''}${escapeHtml(p.name)}${onlineDot} ${ownerBadge}${proxyBadge}</div><div class="opp-hand">${cardsHtml}</div>${countLabel}${unoLabel}${drunkLabel}${penalty}${rankLabel}${reportBtn}`;
     oppEl.appendChild(div);
   });
 
   // 状态栏
   const myTurn = state.players.find(p => p.isYou && p.isCurrent);
+  const myStunned = !!(myTurn && myTurn.stunned);   // 昏头：这回合只能摸牌
+  const myDrunk = !!(myTurn && myTurn.drunk);       // 眼花：手牌会看成万能牌
   if (state.status === 'over') {
     $('status-text').textContent = '游戏结束！';
   } else if (state.status === 'grabbing') {
@@ -1291,10 +1313,14 @@ function renderGame(state) {
     $('status-text').textContent = `⚡ ${escapeHtml(state.grabAvailable.playedBy)} 刚打出 ${cardText(state.grabAvailable.card)}，你可以抢相同的牌！`;
   } else if (state.wildPending && myTurn) {
     $('status-text').textContent = '请选择颜色';
+  } else if (myTurn && myStunned) {
+    $('status-text').textContent = '🍶 昏头：这回合出不了牌，点摸牌堆吧';
   } else if (myTurn && state.pendingDraw > 0) {
     $('status-text').textContent = `罚牌 +${state.pendingDraw}：出+2/+4叠加，否则自动摸牌`;
   } else if (myTurn) {
-    $('status-text').textContent = '轮到你出牌！';
+    $('status-text').textContent = myDrunk
+      ? '🍶 眼花：手牌都能当万能牌打（打出后请选颜色）'
+      : '轮到你出牌！';
   } else if (state.pendingDraw > 0) {
     $('status-text').textContent = `${escapeHtml(state.currentPlayerName)} 面临 +${state.pendingDraw} 罚牌...`;
   } else {
@@ -1387,7 +1413,11 @@ function renderGame(state) {
   // 抢牌按钮：我可以抢牌时显示（服务器已按候选人过滤）
   $('btn-grab-card').classList.toggle('hidden', !state.grabAvailable);
 
-  if (myTurn && state.status === 'playing' && !state.wildPending && state.pendingDraw > 0) {
+  // 昏头：出不了牌，只能摸（服务端随机摸 1~3 张后直接换人），给个显眼按钮
+  if (myTurn && state.status === 'playing' && myStunned) {
+    $('btn-pass').textContent = '🍶 昏头：随便摸';
+    $('btn-pass').classList.remove('hidden');
+  } else if (myTurn && state.status === 'playing' && !state.wildPending && state.pendingDraw > 0) {
     $('btn-pass').textContent = `不出(摸${state.pendingDraw}张)`;
     $('btn-pass').classList.remove('hidden');
   } else {
@@ -1449,8 +1479,9 @@ function renderGame(state) {
   // 关键修复：给每张牌附上原始索引
   const indexed = state.yourHand.map((card, originalIndex) => ({ card, originalIndex }));
   indexed.sort((a, b) => {
-    const ca = colorOrder[a.card.color] ?? 4;
-    const cb = colorOrder[b.card.color] ?? 4;
+    // 岁牌（技能牌）排最前面，颜色牌按红黄绿蓝，万能牌最后
+    const ca = a.card.type === 6 ? -1 : (colorOrder[a.card.color] ?? 4);
+    const cb = b.card.type === 6 ? -1 : (colorOrder[b.card.color] ?? 4);
     if (ca !== cb) return ca - cb;
     const ta = a.card.type === 0 ? a.card.value : a.card.type + 10;
     const tb = b.card.type === 0 ? b.card.value : b.card.type + 10;
@@ -1459,19 +1490,39 @@ function renderGame(state) {
 
   indexed.forEach(({ card, originalIndex }) => {
     const div = document.createElement('div');
-    // 自己回合 + 这张牌真的能打在顶牌上（与服务端 isPlayable 同一套规则）。
-    // 打不出去的牌也保持亮着、也能点选，只是不会真的打出去
-    const myPlayTime = myTurn && !state.wildPending && state.status === 'playing';
-    let playable = myPlayTime && matchesTop(card, state);
+    // 自己回合 + 至少能出手（打不出去的牌也亮着、也能点选，只是不会真的打出去）
+    // 昏头时什么牌都不能出，只能摸牌
+    const myPlayTime = myTurn && !state.wildPending && state.status === 'playing' && !myStunned;
+    const isSkill = card.type === 6;
+    // 眼花：非万能牌被看成万能牌（只影响"看起来"，昏头那一手也照样闪，只是打不出去）
+    const showWildGhost = !!myDrunk && !state.wildPending && state.pendingDraw === 0
+      && card.type !== 4 && card.type !== 5 && !isSkill;
+    // 真能当万能牌打出去：还得是自己回合、没昏头（顶着罚牌时按真实规则走）
+    const fakeWild = showWildGhost && myPlayTime;
+    let playable = isSkill
+      ? (myPlayTime && state.pendingDraw === 0)
+      : (fakeWild || (myPlayTime && matchesTop(card, state)));
     // wildPending 时整手牌禁用（必须通过颜色弹窗选色，防止乱点把 currentColor 置 null）
     // 可抢牌：手上有和刚打出的牌完全一样的牌（包括自己刚打出的，可连出）
     const canGrabCard = !myTurn && state.status === 'playing' && !state.wildPending && state.grabAvailable &&
       card.color === state.grabAvailable.card.color &&
       card.type === state.grabAvailable.card.type &&
       card.value === state.grabAvailable.card.value;
-    div.className = 'hand-card ' + (card.color || 'none') + (isOfficialUI() ? ' official' : '');
+    div.className = 'hand-card ' + (isSkill ? 'skill' : (card.color || 'none')) + (isOfficialUI() ? ' official' : '');
+    if (showWildGhost) div.classList.add('fake-wild');
+    if (isSkill) div.title = '岁牌 · 令：把手上的牌按概率变成万能牌，代价是昏头 1 回合、眼花 2 回合（不占回合，打完还是你的回合）';
+    else if (myStunned) div.title = '昏头中：这回合出不了牌，点摸牌堆随机摸 1~3 张';
+    else if (fakeWild) div.title = '眼花：这张会当成万能牌打出去，打出后选颜色';
     if (isOfficialUI()) div.innerHTML = faceHtml(card);
     else div.textContent = cardText(card);
+    // 眼花：在牌上叠一层"万能"的残影（模糊、一闪一闪），让人看见的是假万能牌。
+    // 必须放在设置牌面之后，否则会被 innerHTML/textContent 覆盖掉
+    if (showWildGhost) {
+      const ghost = document.createElement('span');
+      ghost.className = 'ghost-wild';
+      ghost.textContent = '万能';
+      div.appendChild(ghost);
+    }
 
     // 商店：选好商品后，这张手牌就是候选付款牌。选中后等"购买"按钮确认
     if (shopPick !== null && currentGameState && Array.isArray(currentGameState.shop)) {
@@ -1498,7 +1549,8 @@ function renderGame(state) {
       div.onclick = () => {
         // 使用 originalIndex，绝不会错
         if (div.classList.contains('selected')) {
-          if (card.type === 4 || card.type === 5) {
+          // 万能牌 / +4 / 眼花时的任意牌 / 岁牌 都要先选颜色
+          if (card.type === 4 || card.type === 5 || fakeWild) {
             window._pendingCardIndex = originalIndex;
             $('color-modal').classList.remove('hidden');
           } else {
