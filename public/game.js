@@ -1099,7 +1099,10 @@ function matchesTop(card, state) {
 function shopSlotOf(shop, i) {
   const s = shop[i];
   if (!s) return { card: null, priceColor: null, sold: true };
-  if (s.card) return { card: s.card, priceColor: s.priceColor || (s.card.color !== 'none' ? s.card.color : null), sold: !!s.sold };
+  // 买完后服务端把格子设为 { sold: true }（没有 card），必须在这里拦住，
+  // 否则会落到下面"直接给牌对象"的旧结构分支，把 {sold:true} 当牌渲染成黑底
+  if (s.sold) return { card: null, priceColor: null, sold: true };
+  if (s.card) return { card: s.card, priceColor: s.priceColor || (s.card.color !== 'none' ? s.card.color : null), sold: false };
   return { card: s, priceColor: s.color, sold: false };
 }
 
