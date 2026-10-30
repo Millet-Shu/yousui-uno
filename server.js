@@ -1646,7 +1646,10 @@ io.on('connection', (socket) => {
     room.status = 'waiting';
     stopTurnClock(room);    // 回到等待区，回合计时停掉
     room.turnRemain = null;
-    room.players.forEach(p => { p.hand = []; p.finished = false; p.rank = null; });
+    room.players.forEach(p => {
+      p.hand = []; p.finished = false; p.rank = null;
+      p.buyStreak = 0; p.boughtThisTurn = false;
+    });
     room.drawPile = [];
     room.playPile = [];
     room.discardPile = [];
