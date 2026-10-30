@@ -96,6 +96,9 @@ const TURN_LIMIT = 30000;
 
 // ===== 有岁商店 =====
 const SHOP_SIZE = 4;
+// 连续买牌最多 2 个回合：买牌会直接结束回合且不用摸牌，不设上限就能一直靠商店跳过自己回合。
+// 到上限后这一回合必须自己出牌 / 摸牌（刷新商店不受影响，刷新本来就不过回合）
+const MAX_BUY_STREAK = 2;
 
 // ===== 岁牌·令 的参数 =====
 // 「令」一张牌都不改，只给人添负面状态：先眼花、再昏头
@@ -223,6 +226,7 @@ function createRoom(maxPlayers = 4) {
     status: 'waiting',
     mode: null,                  // 游戏模式：normal=正常版，yousui=有岁版；开局前由房主选择
     wildPending: false,
+    fakeWildCard: null,          // 眼花打出的牌：等选完色后照常结算它的原牌效果
     unoCalled: {},
     unoBadge: null,              // 喊牌飘带：{ playerId, expire }，只在这一个回合内显示
     pendingReport: null,
@@ -291,6 +295,7 @@ function publicRoomState(room, selfPlayer) {
       stunned: isStunned(p),        // 昏头：这回合不能出牌，只能摸牌
       drunk: isDrunk(p),            // 眼花：非万能的牌都看成万能牌
       drunkLeft: Math.max(0, (p.dizzyTurns || 0) - STUN_TURNS),  // 还剩几个回合眼花
+      buyStreak: p.buyStreak || 0,  // 已经连续几个回合用商店买牌（到上限后这回合不能再买）
       isOwner: p.id === room.ownerPlayerId,
       isYou: p.id === selfId,
       isCurrent: room.players[room.currentIndex] && room.players[room.currentIndex].id === p.id
@@ -324,6 +329,7 @@ function publicRoomState(room, selfPlayer) {
     shopEnabled: !!rulesOf(room).shop,
     shop: (rulesOf(room).shop && (room.status === 'playing' || room.status === 'grabbing')) ? (room.shop || null) : null,
     shopRerollUsed: !!room.shopRerollUsed,
+    maxBuyStreak: MAX_BUY_STREAK,   // 连续买牌上限：前端据此把商店灰掉并提示
     maxPlayers: room.maxPlayers,
     justDrew: !!room.justDrew,
     // 房主身份按玩家 id 判定：socket 重连换了新 id 也不会丢失房主
@@ -409,6 +415,8 @@ function startGame(room) {
     p.hand = []; p.finished = false; p.rank = null; p.unoCalled = false;
     p.aiProxy = !!p.offline;  // 开局就离线的玩家由 AI 代理
     p.dizzyTurns = 0;   // 新的一局：「令」的负面（眼花/昏头）清零
+    p.buyStreak = 0;    // 新的一局：连续买牌计数清零
+    p.boughtThisTurn = false;
   }
 
   for (let i = 0; i < 7; i++) {
@@ -424,6 +432,7 @@ function startGame(room) {
   room.pendingDraw = 0;
   room.pendingDrawType = null;   // ✅ 清零
   room.wildPending = false;
+  room.fakeWildCard = null;
   room.justDrew = false;        // ✅ 清零
   room.aiTurnPending = false;
   room.aiTurnSeq = null;
@@ -613,6 +622,11 @@ function useSkillCard(room, player, cardIndex) {
   if (card.value === 'decree') applyDecree(room, player);
 
   checkWin(room);
+  // 用岁牌把最后一张打光也算出完：这一手结束，轮到下一位（不然会停在一个没有牌的已出完玩家身上）
+  if (player.finished && room.status === 'playing') {
+    advance(room);
+    room.unoBadge = null;
+  }
   broadcastRoom(room);
   if (room.status !== 'over') scheduleIfAuto(room, AI_DELAY_EXTRA);
 }
@@ -624,20 +638,16 @@ function applyDecree(room, player) {
   addLog(room, `${player.name} 中了「令」：眼花 ${DRUNK_TURNS} 回合（手牌都看成万能牌），之后昏头 ${STUN_TURNS} 回合`);
 }
 
-function handleCardEffect(room, player, card, chosenColor, asFakeWild = false) {
-  addLog(room, `${player.name} 打出 ${cardName(card)}${asFakeWild ? '（眼花，当万能牌用）' : ''}`);
-
-  if (asFakeWild) {
-    // 眼花：牌本身还是原来那张（顶牌照旧），但颜色由自己指定
-    room.wildPending = true;
-    if (chosenColor) { resolveWildColor(room, player.id, chosenColor); return; }
-  } else switch (card.type) {
+// 结算一张牌"本身"的效果（不含万能牌选色）。
+// colorAlreadySet=true 表示这是眼花打出的假万能牌：颜色已经由玩家选好，牌面原色不能再覆盖它
+function applyCardBody(room, player, card, colorAlreadySet) {
+  switch (card.type) {
     case T.NUMBER:
-      room.currentColor = card.color;
+      if (!colorAlreadySet) room.currentColor = card.color;
       advance(room);
       break;
     case T.SKIP: {
-      room.currentColor = card.color;
+      if (!colorAlreadySet) room.currentColor = card.color;
       advance(room);
       // 先记录被跳过的人是第一次换人后的那位，再推进一次
       const skipped = room.players[room.currentIndex];
@@ -646,7 +656,7 @@ function handleCardEffect(room, player, card, chosenColor, asFakeWild = false) {
       break;
     }
     case T.REVERSE: {
-      room.currentColor = card.color;
+      if (!colorAlreadySet) room.currentColor = card.color;
       room.direction *= -1;
       if (room.players.filter(p => !p.finished).length === 2) {
         // 官方规则：2 人局反转等同"跳过"，对手被跳过、出牌者再来一回合
@@ -661,21 +671,33 @@ function handleCardEffect(room, player, card, chosenColor, asFakeWild = false) {
       break;
     }
     case T.DRAW_TWO:
-      room.currentColor = card.color;
+      if (!colorAlreadySet) room.currentColor = card.color;
       room.pendingDraw += 2;
       room.pendingDrawType = T.DRAW_TWO;
       advance(room);
       break;
-    case T.WILD:
-      room.wildPending = true;
-      if (chosenColor) { resolveWildColor(room, player.id, chosenColor); return; }
-      break;
-    case T.WILD_DRAW_FOUR:
+  }
+}
+
+function handleCardEffect(room, player, card, chosenColor, asFakeWild = false) {
+  addLog(room, `${player.name} 打出 ${cardName(card)}${asFakeWild ? '（眼花，当万能牌用）' : ''}`);
+
+  if (asFakeWild) {
+    // 眼花：牌还是原来那张（顶牌照旧），颜色由自己选；选完色后再照常结算原牌效果（反转 / +2 都保留）
+    room.wildPending = true;
+    room.fakeWildCard = card;
+    if (chosenColor) { resolveWildColor(room, player.id, chosenColor); return; }
+  } else if (isWild(card)) {
+    // 真万能牌 / +4：先等选色，选完色直接换人（本身没有别的效果）
+    room.fakeWildCard = null;
+    room.wildPending = true;
+    if (card.type === T.WILD_DRAW_FOUR) {
       room.pendingDraw += 4;
       room.pendingDrawType = T.WILD_DRAW_FOUR;
-      room.wildPending = true;
-      if (chosenColor) { resolveWildColor(room, player.id, chosenColor); return; }
-      break;
+    }
+    if (chosenColor) { resolveWildColor(room, player.id, chosenColor); return; }
+  } else {
+    applyCardBody(room, player, card, false);
   }
 
   checkWin(room);
@@ -785,7 +807,14 @@ function resolveWildColor(room, playerId, color) {
   room.wildPending = false;
   // 注意：不要清 pendingReport，否则剩 1 张时打万能牌会白白跳过举报窗口
   addLog(room, `${player.name} 指定颜色 ${colorName(color)}`);
-  advance(room);
+  const fakeCard = room.fakeWildCard;
+  room.fakeWildCard = null;
+  if (fakeCard) {
+    // 眼花打出的牌：颜色归自己选，牌面原本的功能照常结算（反转 / +2 / 跳过都保留）
+    applyCardBody(room, player, fakeCard, true);
+  } else {
+    advance(room);
+  }
 
   checkWin(room);
   if (room.status === 'over') { broadcastRoom(room); return; }
@@ -1039,7 +1068,12 @@ function advance(room, countTurn = true) {
   }
   room.currentIndex = next;
   // 「令」的负面按"自己的回合"结算：谁的回合走完，谁的倒计时减一
-  if (prev && countTurn && prev.dizzyTurns > 0) prev.dizzyTurns -= 1;
+  if (prev && countTurn) {
+    if (prev.dizzyTurns > 0) prev.dizzyTurns -= 1;
+    // 连续买牌计数：这一回合没买就断开（买了的已经在 buyShopCard 里 +1 过了）
+    if (!prev.boughtThisTurn) prev.buyStreak = 0;
+    prev.boughtThisTurn = false;
+  }
   // ✅ 切换玩家时清理 justDrew
   room.justDrew = false;
   // 新回合开始：本回合的商店刷新次数重置
@@ -1115,6 +1149,8 @@ function buyShopCard(room, playerId, slot, payIndex) {
   if (!player || player.id !== playerId) return false;   // 只有当前回合的玩家能买
   if (room.wildPending || room.pendingDraw > 0) return false;  // 先处理选色/罚牌，别拿商店躲罚
   if (isStunned(player)) return false;   // 昏头时连商店都逛不了，只能摸牌
+  // 连续买牌到上限：这回合必须自己出牌或摸牌，不能再靠商店跳过回合
+  if ((player.buyStreak || 0) >= MAX_BUY_STREAK) return false;
 
   slot = parseInt(slot, 10);
   payIndex = parseInt(payIndex, 10);
@@ -1130,6 +1166,13 @@ function buyShopCard(room, playerId, slot, payIndex) {
   player.hand.push(goods.card);      // 买到的牌进手牌
   room.shop[slot] = { sold: true };  // 卖掉的位置留空，四件都卖光才补货
   addLog(room, `${player.name} 用 ${cardName(pay)} 在商店换走了 ${cardName(goods.card)}`);
+
+  // 连买计数：买牌会直接结束回合，先记上；下个回合结束时没买才会清零（见 advance）
+  player.buyStreak = (player.buyStreak || 0) + 1;
+  player.boughtThisTurn = true;
+  if (player.buyStreak >= MAX_BUY_STREAK) {
+    addLog(room, `${player.name} 连续 ${player.buyStreak} 回合买牌，下回合得自己出牌或摸牌`);
+  }
 
   // 买牌也是"本回合已行动"：上一张牌的举报窗口关闭。
   // 但如果这个举报窗口正是针对自己的（刚出到剩 1 张没喊），不能靠买牌躲掉，得留着
@@ -1188,6 +1231,7 @@ function abortIfTooFewPlayers(room) {
   room.grabAvailable = null;
   room.pendingReport = null;
   room.wildPending = false;
+  room.fakeWildCard = null;
   room.justDrew = false;
   room.pendingDraw = 0;
   room.pendingDrawType = null;
@@ -1238,6 +1282,7 @@ function checkWin(room) {
     room.pendingReport = null;
     room.justDrew = false;
     room.wildPending = false;
+    room.fakeWildCard = null;
     room.unoBadge = null;   // 结束后不要再挂着喊牌飘带
     if (remaining.length === 1) {
       remaining[0].rank = room.players.filter(x => x.finished).length + 1;
@@ -1303,14 +1348,7 @@ function aiTurn(room) {
   // 昏头：AI 也只能摸牌（drawCard 会按昏头规则摸 1~3 张后换人）
   if (isStunned(player)) { drawCard(room, player.id); return; }
 
-  // 岁牌：手牌还多、又没顶着罚牌时，有概率用「令」让自己接下来两个回合都能当万能牌打
-  const skillIdx = player.hand.findIndex(c => isSkillCard(c));
-  if (skillIdx >= 0 && room.pendingDraw === 0 && player.hand.length >= 4 && Math.random() < 0.5) {
-    useSkillCard(room, player, skillIdx);
-    return;
-  }
-
-  // 眼花：非万能牌也能当万能牌打，挑一张并选自己手上最多的颜色
+  // 眼花：非万能牌也能当万能牌打（原牌功能保留，颜色自己选）
   const fakeWild = isDrunk(player) && room.pendingDraw === 0;
 
   const playable = [];
@@ -1319,16 +1357,36 @@ function aiTurn(room) {
     if (isPlayable(player.hand[i], room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType)) playable.push(i);
   }
 
+  // 岁牌不占回合，用完还能接着出牌：
+  // 只剩这一张 → 直接打出去赢；没牌可出 → 先打岁牌，让手牌都能当万能牌；
+  // 手牌多 → 有一定概率提前用，别留在手里卡到最后。
+  // 已经眼花时不再重复打（只会刷新负面倒计时，纯浪费），除非这是最后一张
+  const skillIdx = player.hand.findIndex(c => isSkillCard(c));
+  if (skillIdx >= 0 && room.pendingDraw === 0
+      && (player.hand.length === 1
+        || (!isDrunk(player) && (playable.length === 0 || (player.hand.length >= 4 && Math.random() < 0.6))))) {
+    useSkillCard(room, player, skillIdx);
+    return;
+  }
+
   if (playable.length === 0 && fakeWild) {
-    const idx = player.hand.findIndex(c => !isWild(c) && !isSkillCard(c));
-    if (idx >= 0) { playCard(room, player.id, idx, bestHandColor(player)); return; }
+    // 眼花：挑一张最值钱的牌当万能牌打（+2 / 功能牌优先，数字牌挑大的）
+    let fakeIdx = -1;
+    let fakeScore = -1;
+    for (let i = 0; i < player.hand.length; i++) {
+      const c = player.hand[i];
+      if (isWild(c) || isSkillCard(c)) continue;
+      const score = aiCardValue(c, player.hand);
+      if (score > fakeScore) { fakeScore = score; fakeIdx = i; }
+    }
+    if (fakeIdx >= 0) { playCard(room, player.id, fakeIdx, bestHandColor(player)); return; }
   }
 
   if (playable.length === 0) {
     // 有岁商店：出不了牌时先去商店逛逛（买一张指定的牌比随机摸一张划算）。
-    // 商店操作放到定时器里做，给玩家留出看清"AI 在换牌"的时间，避免瞬间执行显得卡顿
-    if (rulesOf(room).shop && room.pendingDraw === 0 && Array.isArray(room.shop)
-        && room.shop.some(s => s && s.card)) {
+    // 连续买牌到上限时不能再买，直接摸牌；商店操作放到定时器里做，给玩家留出看清动作的时间
+    if (rulesOf(room).shop && room.pendingDraw === 0 && (player.buyStreak || 0) < MAX_BUY_STREAK
+        && Array.isArray(room.shop) && room.shop.some(s => s && s.card)) {
       scheduleAiShopAction(room, player, () => aiShopVisit(room, player));
       return;
     }
@@ -1350,15 +1408,9 @@ function aiTurn(room) {
   }
 
   const card = player.hand[bestIdx];
-  let chosenColor = null;
-  if (isWild(card)) {
-    const counts = {};
-    for (const c of player.hand) {
-      if (c.color !== 'none') counts[c.color] = (counts[c.color] || 0) + 1;
-    }
-    chosenColor = 'red';
-    for (const c in counts) if (counts[c] > (counts[chosenColor] || 0)) chosenColor = c;
-  }
+  // 万能牌、以及眼花时打出的任何非万能牌，都要先选一个颜色（挑手上最多的颜色）
+  const chosenColor = (isWild(card) || (isDrunk(player) && room.pendingDraw === 0))
+    ? bestHandColor(player) : null;
 
   // AI 75%概率喊"有岁"（出牌后剩1张时）
   if (player.hand.length - 1 === 1 && Math.random() < 0.75) {
@@ -1430,6 +1482,8 @@ function aiBestPurchase(room, player) {
 
 // AI 逛商店：有划算的就买（买完自动结束回合）；没有就按概率刷新一次再看；都不行才摸牌
 function aiShopVisit(room, player) {
+  // 连续买牌到上限：这回合必须自己出牌或摸牌，不能再靠商店跳过回合
+  if ((player.buyStreak || 0) >= MAX_BUY_STREAK) { drawCard(room, player.id); return; }
   const plan = aiBestPurchase(room, player);
   if (plan && plan.net >= AI_BUY_SCORE
       && buyShopCard(room, player.id, plan.slot, plan.payIndex)) return;
@@ -1589,6 +1643,7 @@ io.on('connection', (socket) => {
     room.pendingDraw = 0;
     room.pendingDrawType = null;
     room.wildPending = false;
+    room.fakeWildCard = null;
     room.pendingReport = null;
     room.unoCalled = {};
     room.unoBadge = null;   // 回到房间时不要再残留喊牌飘带
@@ -1668,6 +1723,7 @@ io.on('connection', (socket) => {
           room.aiTurnSeq = null;
           closeGrabWindow(room);
           room.wildPending = false;  // 被踢者可能正在选色，不清会永久卡住
+          room.fakeWildCard = null;
           room.pendingReport = null;
           room.pendingDraw = 0;      // 被踢者的罚牌不能留给下一个人
           room.pendingDrawType = null;
@@ -1882,6 +1938,7 @@ io.on('connection', (socket) => {
           room.aiTurnSeq = null;
           closeGrabWindow(room);
           room.wildPending = false;
+          room.fakeWildCard = null;
           room.pendingReport = null;
           room.pendingDraw = 0;
           room.pendingDrawType = null;

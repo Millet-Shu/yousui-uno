@@ -1106,11 +1106,18 @@ function shopSlotOf(shop, i) {
   return { card: s, priceColor: s.color, sold: false };
 }
 
-// 当前能不能买：自己回合、没在选色/罚牌、对局进行中
-function canBuyShop(state) {
+// 当前能不能操作商店（买 / 刷新）：自己回合、没在选色/罚牌、对局进行中
+function canShopAct(state) {
   const me = state.players.find(p => p.isYou);
   if (!me || !me.isCurrent) return false;
   return state.status === 'playing' && !state.paused && !state.wildPending && !(state.pendingDraw > 0);
+}
+
+// 当前能不能买：连续买牌到上限后，这一回合必须自己出牌或摸牌（刷新不受限）
+function canBuyShop(state) {
+  const me = state.players.find(p => p.isYou);
+  if (!me) return false;
+  return canShopAct(state) && (me.buyStreak || 0) < (state.maxBuyStreak || 2);
 }
 
 function renderShop(state) {
@@ -1128,6 +1135,11 @@ function renderShop(state) {
   }
 
   const isSpectator = !state.players.some(p => p.isYou);
+  const me = state.players.find(p => p.isYou);
+  const maxStreak = state.maxBuyStreak || 2;
+  const canAct = !isSpectator && canShopAct(state);
+  // 连续买牌到上限：这回合商店只能看/刷新，不能买，必须自己出牌或摸牌
+  const buyBlocked = canAct && !!(me && (me.buyStreak || 0) >= maxStreak);
   const canBuy = !isSpectator && canBuyShop(state);
   if (!canBuy) { shopPick = null; shopPayIndex = null; }
 
@@ -1186,9 +1198,9 @@ function renderShop(state) {
   btn.classList.toggle('hidden', !ready);
   if (ready) btn.textContent = '确认购买';
 
-  // 刷新按钮：自己回合 + 本回合还没刷过才能点
+  // 刷新按钮：自己回合 + 本回合还没刷过才能点（连续买牌被限时仍可刷新，刷新不过回合）
   const rerollBtn = $('btn-shop-reroll');
-  const canReroll = canBuy && !state.shopRerollUsed;
+  const canReroll = canAct && !state.shopRerollUsed;
   rerollBtn.disabled = !canReroll;
   rerollBtn.textContent = state.shopRerollUsed ? '已刷新' : '刷新';
   rerollBtn.title = canReroll
@@ -1196,7 +1208,9 @@ function renderShop(state) {
     : (state.shopRerollUsed ? '本回合已经刷新过了' : '轮到你时才能刷新');
 
   const hint = $('shop-hint');
-  if (!canBuy) {
+  if (buyBlocked) {
+    hint.textContent = `已连续 ${me.buyStreak} 回合买牌，这回合必须自己出牌或摸牌`;
+  } else if (!canAct) {
     hint.textContent = isSpectator ? '观战中' : '轮到你时才能买 / 刷新';
   } else if (ready) {
     hint.textContent = '购买后本回合结束，不能再出牌';
@@ -1322,7 +1336,7 @@ function renderGame(state) {
     $('status-text').textContent = `罚牌 +${state.pendingDraw}：出+2/+4叠加，否则自动摸牌`;
   } else if (myTurn) {
     $('status-text').textContent = myDrunk
-      ? '🍶 眼花：手牌都能当万能牌打（打出后请选颜色）'
+      ? '🍶 眼花：手牌都能当万能牌打（先选颜色，原牌效果保留）'
       : '轮到你出牌！';
   } else if (state.pendingDraw > 0) {
     $('status-text').textContent = `${escapeHtml(state.currentPlayerName)} 面临 +${state.pendingDraw} 罚牌...`;
@@ -1474,7 +1488,7 @@ function renderGame(state) {
   } else {
     const left = me.drunkLeft || 0;
     debuffEl.className = 'hand-debuff drunk';
-    debuffEl.textContent = `🍶 眼花：手上的牌都看成万能牌${left ? `（还剩 ${left} 回合）` : ''}`;
+    debuffEl.textContent = `🍶 眼花：手上的牌都看成万能牌，出牌可选颜色${left ? `（还剩 ${left} 回合）` : ''}`;
   }
 
   // 手牌：排序时带上 originalIndex，避免 indexOf 错位
@@ -1524,9 +1538,9 @@ function renderGame(state) {
     // 昏头：整手牌灰掉、不能点（这一手靠点摸牌堆过去）
     if (myStunned) div.classList.add('locked');
     if (showWildGhost) div.classList.add('fake-wild');
-    if (isSkill) div.title = '岁牌 · 令：接下来 2 个回合眼花（手牌都看成万能牌，能当万能牌打），之后 1 个回合昏头（出不了牌，摸牌会摸 1~3 张）；不占回合';
+    if (isSkill) div.title = '岁牌 · 令：接下来 2 个回合眼花（手牌都看成万能牌，能当万能牌打，原牌效果保留），之后 1 个回合昏头（出不了牌，摸牌会摸 1~3 张）；不占回合';
     else if (myStunned) div.title = '昏头中：这回合出不了牌，点摸牌堆随机摸 1~3 张';
-    else if (fakeWild) div.title = '眼花：这张会当成万能牌打出去，打出后选颜色';
+    else if (fakeWild) div.title = '眼花：这张会当成万能牌打出去（先选颜色），原牌的效果（反转 / +2 / 跳过）照样生效';
     if (isOfficialUI()) div.innerHTML = faceHtml(card);
     else { div.innerHTML = '<span class="card-face"></span>'; div.querySelector('.card-face').textContent = cardText(card); }
     // 眼花：原牌面模糊 + ::after 伪元素叠一层万能牌外观（若影若现），不再额外插 DOM
