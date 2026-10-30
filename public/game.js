@@ -46,6 +46,28 @@ function showScreen(name) {
   if (name !== 'lobby') $('mode-picker').classList.add('hidden');
 }
 
+// 取"我"的座位；观战/未入座时返回 null
+function findMe(state) {
+  return (state && state.players) ? (state.players.find(p => p.isYou) || null) : null;
+}
+
+// 清掉本机保存的座位身份（退出 / 被踢 / 房间失效）
+function clearLocalSeat() {
+  myPlayerId = null;
+  myRoomCode = null;
+  mySeatToken = '';
+}
+
+// 主动退出 / 被踢统一走这里：清掉本地座位凭证并回首页
+function leaveToHome(message) {
+  socket.emit('leaveRoom');   // 让服务端清掉本连接的房间引用，避免后续创建房间被拒
+  localStorage.clear();
+  clearLocalSeat();
+  leftRoom = true;
+  if (message) alert(message);
+  showScreen('home');
+}
+
 // ✅ XSS 防护：HTML 转义
 function escapeHtml(str) {
   if (str === null || str === undefined) return '';
@@ -74,12 +96,7 @@ $('btn-join').onclick = () => {
 
 $('btn-leave').onclick = () => {
   if (!confirm('确定要离开房间吗？')) return;
-  socket.emit('leaveRoom');
-  localStorage.clear();
-  myPlayerId = null;
-  myRoomCode = null;
-  leftRoom = true;
-  showScreen('home');
+  leaveToHome();
 };
 $('btn-addai').onclick = () => socket.emit('addAI');
 // 开始游戏：还没选模式时先弹模式卡片，选完回到房间再点一次开始
@@ -131,14 +148,7 @@ $('btn-endgame').onclick = () => {
 };
 $('btn-leave-room').onclick = () => {
   $('menu-dropdown').classList.add('hidden');
-  showConfirm('确定要退出房间吗？', () => {
-    socket.emit('leaveRoom');
-    localStorage.clear();
-    myPlayerId = null;
-    myRoomCode = null;
-    leftRoom = true;
-    showScreen('home');
-  });
+  showConfirm('确定要退出房间吗？', () => leaveToHome());
 };
 $('btn-pause').onclick = () => {
   $('menu-dropdown').classList.add('hidden');
@@ -147,14 +157,7 @@ $('btn-pause').onclick = () => {
 $('btn-resume').onclick = () => socket.emit('resumeGame');
 // 暂停遮罩盖住了右上角菜单，这里给所有人一个退出通道
 $('btn-pause-leave').onclick = () => {
-  showConfirm('确定要退出房间吗？', () => {
-    socket.emit('leaveRoom');
-    localStorage.clear();
-    myPlayerId = null;
-    myRoomCode = null;
-    leftRoom = true;
-    showScreen('home');
-  });
+  showConfirm('确定要退出房间吗？', () => leaveToHome());
 };
 
 // ===== 音频引擎（Web Audio 实时合成，不依赖音频文件）=====
@@ -619,7 +622,7 @@ function paintTurnTimer() {
 
   // 只剩几秒的提醒只给"这一手就是你自己"的人：红字闪烁 + 滴答声。
   // 别人的回合只显示秒数，不会闪也不会有声音，免得替别人紧张
-  const me = s.players ? s.players.find(p => p.isYou) : null;
+  const me = findMe(s);
   const mine = !!(me && s.turnPlayerId && me.id === s.turnPlayerId);
   el.classList.toggle('mine', mine);
   const urgent = mine && left <= 5 && left > 0;
@@ -796,24 +799,19 @@ $('btn-mode-cancel').onclick = closeModePicker;
 })();
 
 // ===== 服务器事件 =====
-socket.on('roomCreated', ({ code, playerId, seatToken }) => {
+// 创建 / 加入成功后的落地处理完全一样，只写一份
+function handleJoined({ code, playerId, seatToken }) {
   myPlayerId = playerId;
   myRoomCode = code;
   saveSeat(playerId, code, seatToken);
   $('lobby-code').textContent = code;
   showScreen('lobby');
-});
+}
+socket.on('roomCreated', handleJoined);
+socket.on('roomJoined', handleJoined);
 
-socket.on('roomJoined', ({ code, playerId, seatToken }) => {
-  myPlayerId = playerId;
-  myRoomCode = code;
-  saveSeat(playerId, code, seatToken);
-  $('lobby-code').textContent = code;
-  showScreen('lobby');
-});
-
-socket.on('reconnected', (state) => {
-  saveSeat(null, null, state.seatToken);   // 旧会话重连成功后补存令牌
+// 服务器下发的房间状态：等待区进大厅，其余进牌桌
+function applyRoomState(state) {
   if (state.status === 'waiting') {
     renderLobby(state);
     showScreen('lobby');
@@ -821,15 +819,18 @@ socket.on('reconnected', (state) => {
     renderGame(state);
     showScreen('game');
   }
+}
+
+socket.on('reconnected', (state) => {
+  saveSeat(null, null, state.seatToken);   // 旧会话重连成功后补存令牌
+  applyRoomState(state);
 });
 
 socket.on('reconnectFailed', () => {
   localStorage.removeItem('uno_playerId');
   localStorage.removeItem('uno_roomCode');
   localStorage.removeItem('uno_seatToken');
-  myPlayerId = null;
-  myRoomCode = null;
-  mySeatToken = '';
+  clearLocalSeat();
   $('home-error').textContent = '原来的房间已结束，请重新创建或加入';
   showScreen('home');
 });
@@ -855,24 +856,12 @@ socket.on('swapRequestResult', ({ accepted }) => {
 
 // 被房主踢出：必须回到首页，否则界面会残留成观战者
 socket.on('kicked', ({ reason } = {}) => {
-  socket.emit('leaveRoom');  // 让服务端清掉本连接的房间引用，避免后续创建房间被拒
-  localStorage.clear();
-  myPlayerId = null;
-  myRoomCode = null;
-  leftRoom = true;
-  alert(reason || '你已被踢出房间');
-  showScreen('home');
+  leaveToHome(reason || '你已被踢出房间');
 });
 
 socket.on('roomUpdate', (state) => {
   if (leftRoom) return;
-  if (state.status === 'waiting') {
-    renderLobby(state);
-    showScreen('lobby');
-  } else {
-    renderGame(state);
-    showScreen('game');
-  }
+  applyRoomState(state);
 });
 
 // ===== 渲染房间等待页 =====
@@ -1096,21 +1085,35 @@ function matchesTop(card, state) {
   return false;
 }
 
+// 手牌点击：第一次点选中，再点一次打出；需要选色的牌先弹颜色窗
+function bindHandCardClick(div, cardIndex, needColor) {
+  div.onclick = () => {
+    if (!div.classList.contains('selected')) {
+      document.querySelectorAll('.hand-card.selected').forEach(d => d.classList.remove('selected'));
+      div.classList.add('selected');
+      return;
+    }
+    if (needColor) {
+      window._pendingCardIndex = cardIndex;
+      $('color-modal').classList.remove('hidden');
+    } else {
+      socket.emit('playCard', { cardIndex });
+    }
+  };
+}
+
 // ===== 有岁商店渲染 =====
-// 服务端每格是 { card, priceColor, sold }，这里统一取出来；兼容直接给牌对象的旧结构
+// 服务端每格是 { card, priceColor, sold }；兼容旧结构直接给牌对象
 function shopSlotOf(shop, i) {
   const s = shop[i];
-  if (!s) return { card: null, priceColor: null, sold: true };
-  // 买完后服务端把格子设为 { sold: true }（没有 card），必须在这里拦住，
-  // 否则会落到下面"直接给牌对象"的旧结构分支，把 {sold:true} 当牌渲染成黑底
-  if (s.sold) return { card: null, priceColor: null, sold: true };
+  if (!s || s.sold) return { card: null, priceColor: null, sold: true };
   if (s.card) return { card: s.card, priceColor: s.priceColor || (s.card.color !== 'none' ? s.card.color : null), sold: false };
   return { card: s, priceColor: s.color, sold: false };
 }
 
 // 当前能不能操作商店（买 / 刷新）：自己回合、没在选色/罚牌、对局进行中
 function canShopAct(state) {
-  const me = state.players.find(p => p.isYou);
+  const me = findMe(state);
   if (!me || !me.isCurrent) return false;
   // 昏头这一回合只能摸牌，商店也一起锁掉（服务端同样不允许买）
   if (me.stunned) return false;
@@ -1119,7 +1122,7 @@ function canShopAct(state) {
 
 // 当前能不能买：连续买牌到上限后，这一回合必须自己出牌或摸牌（刷新不受限）
 function canBuyShop(state) {
-  const me = state.players.find(p => p.isYou);
+  const me = findMe(state);
   if (!me) return false;
   return canShopAct(state) && (me.buyStreak || 0) < (state.maxBuyStreak || 2);
 }
@@ -1139,8 +1142,8 @@ function renderShop(state) {
     return;
   }
 
-  const isSpectator = !state.players.some(p => p.isYou);
-  const me = state.players.find(p => p.isYou);
+  const isSpectator = !findMe(state);
+  const me = findMe(state);
   const maxStreak = state.maxBuyStreak || 2;
   const canAct = canShopAct(state);
   // 连续买牌到上限：这回合商店只能看/刷新，不能买，必须自己出牌或摸牌
@@ -1160,7 +1163,7 @@ function renderShop(state) {
   if (shopPayIndex !== null && !hand[shopPayIndex]) shopPayIndex = null;
 
   itemsEl.innerHTML = '';
-  shop.forEach((raw, i) => {
+  shop.forEach((_, i) => {
     const slot = shopSlotOf(shop, i);
     const el = document.createElement('div');
 
@@ -1336,7 +1339,7 @@ function renderGame(state) {
   });
 
   // 状态栏
-  const me = state.players.find(p => p.isYou);
+  const me = findMe(state);
   const myTurn = state.players.find(p => p.isYou && p.isCurrent);
   const myStunned = !!(me && me.stunned);   // 昏头：这回合不能出牌，只能摸牌
   const myDrunk = !!(me && me.drunk);       // 眼花：非万能的牌都看成万能牌
@@ -1593,33 +1596,13 @@ function renderGame(state) {
       div.classList.add('grabbable');
       div.onclick = () => socket.emit('grabCard');
     } else if (playable) {
-      div.onclick = () => {
-        // 使用 originalIndex，绝不会错
-        if (div.classList.contains('selected')) {
-          // 万能牌 / +4 / 眼花时的任意牌 / 岁牌 都要先选颜色
-          if (card.type === 4 || card.type === 5 || fakeWild) {
-            window._pendingCardIndex = originalIndex;
-            $('color-modal').classList.remove('hidden');
-          } else {
-            socket.emit('playCard', { cardIndex: originalIndex });
-          }
-        } else {
-          document.querySelectorAll('.hand-card.selected').forEach(d => d.classList.remove('selected'));
-          div.classList.add('selected');
-        }
-      };
+      // 万能牌 / +4 / 眼花时的任意牌要先选颜色
+      bindHandCardClick(div, originalIndex, card.type === 4 || card.type === 5 || fakeWild);
     } else {
       // 打不出去的牌不再变暗（整手牌一律保持亮着），点选后由服务端拒绝并给出提示
       if (myPlayTime) {
         div.title = '这张打不出去：要和顶牌同色 / 同数字 / 同功能，或者用万能牌';
-        div.onclick = () => {
-          if (div.classList.contains('selected')) {
-            socket.emit('playCard', { cardIndex: originalIndex });
-          } else {
-            document.querySelectorAll('.hand-card.selected').forEach(d => d.classList.remove('selected'));
-            div.classList.add('selected');
-          }
-        };
+        bindHandCardClick(div, originalIndex, false);
       }
     }
     handEl.appendChild(div);

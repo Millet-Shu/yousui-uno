@@ -294,7 +294,6 @@ function publicRoomState(room, selfPlayer) {
       handCount: p.hand.length,
       finished: !!p.finished,
       rank: p.rank || null,
-      unoCalled: !!room.unoCalled[p.id],
       unoAnnounced: !!(room.unoBadge && room.unoBadge.playerId === p.id),
       stunned: isStunned(p),        // 昏头：这回合不能出牌，只能摸牌
       drunk: isDrunk(p),            // 眼花：非万能的牌都看成万能牌
@@ -326,7 +325,6 @@ function publicRoomState(room, selfPlayer) {
     pendingReport: room.pendingReport,
     myUnoCalled: selfId ? !!room.unoCalled[selfId] : false,
     drawPileCount: room.drawPile.length,
-    playCount: room.playPile.length,
     discardCount: room.discardPile.length,
     // 弃牌堆最上面那张（正面展示用）；没有弃牌时为 null
     discardTop: room.discardPile.length > 0 ? room.discardPile[room.discardPile.length - 1] : null,
@@ -374,6 +372,13 @@ function normalizeCurrentIndex(room) {
   }
 }
 
+// 交换观战席的两个位置（允许空位，null 不会被丢掉）
+function swapSpectators(room, a, b) {
+  const temp = room.spectators[a];
+  room.spectators[a] = room.spectators[b];
+  room.spectators[b] = temp;
+}
+
 function drawCards(room, n) {
   const out = [];
   for (let i = 0; i < n; i++) {
@@ -418,7 +423,7 @@ function startGame(room) {
   room.shopRerollUsed = false;
 
   for (const p of room.players) {
-    p.hand = []; p.finished = false; p.rank = null; p.unoCalled = false;
+    p.hand = []; p.finished = false; p.rank = null;
     p.aiProxy = !!p.offline;  // 开局就离线的玩家由 AI 代理
     p.dizzyTurns = 0;   // 新的一局：「令」的负面（眼花/昏头）清零
     p.buyStreak = 0;    // 新的一局：连续买牌计数清零
@@ -443,9 +448,7 @@ function startGame(room) {
   room.aiTurnPending = false;
   room.aiTurnSeq = null;
   room.grabAvailable = null;    // ✅ 重开时清理抢牌窗口
-  room.paused = false;          // ✅ 重开时不能在暂停状态
-  room.pausedBy = null;
-  room.pausedById = null;
+  resetPause(room);             // ✅ 重开时不能在暂停状态
   room.pendingReport = null;
   room.unoCalled = {};
   room.unoBadge = null;
@@ -505,16 +508,12 @@ function grabLead(room, playerId) {
   addLog(room, `${room.players[room.currentIndex].name} 抢到先手！起始牌 ${cardName(starter)}`);
 
   // ✅ 修复：起始罚牌一次性发给先手，清 pendingDraw 同时清 pendingDrawType
-  if (starter.type === T.DRAW_TWO) {
-    const drawn = drawCards(room, 2);
-    room.players[room.currentIndex].hand.push(...drawn);
-    addLog(room, `${room.players[room.currentIndex].name} 起始罚摸2张`);
-    room.pendingDraw = 0;
-    room.pendingDrawType = null;
-  } else if (starter.type === T.WILD_DRAW_FOUR) {
-    const drawn = drawCards(room, 4);
-    room.players[room.currentIndex].hand.push(...drawn);
-    addLog(room, `${room.players[room.currentIndex].name} 起始罚摸4张`);
+  const starterPenalty = starter.type === T.DRAW_TWO ? 2 : (starter.type === T.WILD_DRAW_FOUR ? 4 : 0);
+  if (starterPenalty > 0) {
+    const starterPlayer = room.players[room.currentIndex];
+    const drawn = drawCards(room, starterPenalty);
+    starterPlayer.hand.push(...drawn);
+    addLog(room, `${starterPlayer.name} 起始罚摸${starterPenalty}张`);
     room.pendingDraw = 0;
     room.pendingDrawType = null;
   }
@@ -734,6 +733,20 @@ function closeGrabWindow(room) {
   room.turnSeq = (room.turnSeq || 0) + 1;
 }
 
+// 当前玩家被踢/退出：把他这一手挂起的状态清干净，下一位接手时不会卡在选色/罚牌/抢牌
+function resetInterruptedTurn(room) {
+  room.justDrew = false;
+  room.aiTurnPending = false;
+  room.aiTurnSeq = null;
+  closeGrabWindow(room);
+  room.wildPending = false;
+  room.fakeWildCard = null;
+  room.pendingReport = null;
+  room.pendingDraw = 0;
+  room.pendingDrawType = null;
+  room.shopRerollUsed = false;   // 换人接手这一回合，商店刷新次数跟着重置
+}
+
 // AI 是否愿意抢这张牌：罚牌（+2/+4）不抢，留给自己的回合继续叠加罚牌
 function aiWantsGrab(card) {
   return card.type !== T.DRAW_TWO && card.type !== T.WILD_DRAW_FOUR;
@@ -743,15 +756,9 @@ function aiWantsGrab(card) {
 function openGrabWindow(room, playedBy) {
   room.grabAvailable = null;
 
-  // 该模式不开放"抢相同的牌"时，直接结束本轮
-  if (!rulesOf(room).grabExchange) {
-    broadcastRoom(room);
-    scheduleIfAuto(room);
-    return;
-  }
-
-  // 顶牌是眼花打出的假万能牌：它对外只算"选定的颜色"，没有完全相同的牌可抢
-  if (room.topAsWild) {
+  // 该模式不开放"抢相同的牌"，或顶牌是眼花打出的假万能牌（对外只算选定的颜色，
+  // 没有完全相同的牌可抢）时，直接结束本轮
+  if (!rulesOf(room).grabExchange || room.topAsWild) {
     broadcastRoom(room);
     scheduleIfAuto(room);
     return;
@@ -916,14 +923,19 @@ function pickNextOwner(room) {
     || (room.spectators || []).find(s => s && s.socketId);
 }
 
+// 把房主身份落到某个座位（玩家或观战者）上
+function assignOwner(room, seat) {
+  room.ownerPlayerId = seat.id;
+  room.ownerSocketId = seat.socketId;
+  addLog(room, `房主转移给 ${seat.name}`);
+}
+
 // 房主离开/掉线时转移房主；fromSocketId 必须仍是当前房主才转移
 function transferOwner(room, fromSocketId) {
   if (room.ownerSocketId !== fromSocketId) return;
   const next = pickNextOwner(room);
   if (next) {
-    room.ownerSocketId = next.socketId;
-    room.ownerPlayerId = next.id;
-    addLog(room, `房主转移给 ${next.name}`);
+    assignOwner(room, next);
   } else {
     room.ownerSocketId = null;
     room.ownerPlayerId = null;
@@ -955,13 +967,18 @@ function ensureOwner(room) {
   }
   const next = pickNextOwner(room);
   if (next) {
-    room.ownerPlayerId = next.id;
-    room.ownerSocketId = next.socketId;
-    addLog(room, `房主转移给 ${next.name}`);
+    assignOwner(room, next);
   } else {
     room.ownerPlayerId = null;
     room.ownerSocketId = null;
   }
+}
+
+// 清掉暂停状态：暂停发起者离开/被踢、对局结束时统一走这里，避免漏清某一项
+function resetPause(room) {
+  room.paused = false;
+  room.pausedBy = null;
+  room.pausedById = null;
 }
 
 // 房主设定的回合时限（毫秒）；0 = 不限时
@@ -1115,13 +1132,9 @@ function grabCard(room, playerId) {
 
   addLog(room, `⚡ ${grabber.name} 抢出相同的牌 ${cardName(card)}！`);
 
-  // UNO 喊牌逻辑与 playCard 保持一致
+  // UNO 喊牌逻辑与 playCard 完全共用：清标记、按剩余张数重算举报窗口
   const myUnoCalled = !!room.unoCalled[grabber.id];
   closeGrabWindow(room);   // 抢牌成功，窗口关闭并作废旧回合的定时器
-  for (const pid in room.unoCalled) {
-    room.unoCalled[pid] = false;
-  }
-  room.unoBadge = null;   // 进入下一回合，喊牌飘带随之消失
 
   grabber.hand.splice(cand.cardIndex, 1);
   room.playPile.push(card);
@@ -1129,17 +1142,8 @@ function grabCard(room, playerId) {
   room.topAsWild = false;   // 抢牌是正常出牌，顶牌恢复按牌面匹配
   room.justDrew = false;
 
-  // 抢牌也算"有人接着出牌"，上一张牌的举报窗口立即失效
-  room.pendingReport = null;
-  // 抢出后剩 1 张且没喊有岁 → 可被举报（直到下一张牌被打出/抢出，或 5 秒超时）
-  if (grabber.hand.length === 1 && !myUnoCalled) {
-    setPendingReport(room, grabber);
-  }
-  if (myUnoCalled && grabber.hand.length <= 1) {
-    addLog(room, `${grabber.name} 喊了"${rulesOf(room).unoWord}"`);
-    room.unoCalled[grabber.id] = true;
-    setUnoBadge(room, grabber.id);   // 飘带亮到下一个回合开始
-  }
+  // 抢牌也是"有人接着出牌"：上一张牌的举报/喊牌状态在这里统一结算
+  settleUnoAfterPlay(room, grabber, myUnoCalled);
 
   // 抢出 +2/+4：之前累加的罚牌数清零，之后重新按这张牌累加为 2 或 4
   room.pendingDraw = 0;
@@ -1155,15 +1159,23 @@ function grabCard(room, playerId) {
 }
 
 // ===== 有岁商店：用一张同色手牌换走商店里的牌 =====
+// 商店操作公共前置：有岁模式、对局进行中、轮到自己、没在选色/罚牌、没昏头
+// 通过时返回当前玩家，否则返回 null
+function shopPlayerOf(room, playerId) {
+  if (!rulesOf(room).shop) return null;
+  if (room.status !== 'playing' || room.paused) return null;
+  if (!Array.isArray(room.shop)) return null;
+  const player = room.players[room.currentIndex];
+  if (!player || player.id !== playerId) return null;   // 只有当前回合的玩家能操作商店
+  if (room.wildPending || room.pendingDraw > 0) return null;  // 先处理选色/罚牌，别拿商店躲罚
+  if (isStunned(player)) return null;   // 昏头时连商店都逛不了，只能摸牌
+  return player;
+}
+
 // 规则：只能在自己回合买；付款牌必须和商品同色；付款牌进弃牌堆（不影响顶牌与当前颜色）
 function buyShopCard(room, playerId, slot, payIndex) {
-  if (!rulesOf(room).shop) return false;
-  if (room.status !== 'playing' || room.paused) return false;
-  if (!Array.isArray(room.shop)) return false;
-  const player = room.players[room.currentIndex];
-  if (!player || player.id !== playerId) return false;   // 只有当前回合的玩家能买
-  if (room.wildPending || room.pendingDraw > 0) return false;  // 先处理选色/罚牌，别拿商店躲罚
-  if (isStunned(player)) return false;   // 昏头时连商店都逛不了，只能摸牌
+  const player = shopPlayerOf(room, playerId);
+  if (!player) return false;
   // 连续买牌到上限：这回合必须自己出牌或摸牌，不能再靠商店跳过回合
   if ((player.buyStreak || 0) >= MAX_BUY_STREAK) return false;
 
@@ -1216,13 +1228,8 @@ function buyShopCard(room, playerId, slot, payIndex) {
 // 刷新商店：每个玩家每回合限一次，四件商品全部换掉。
 // 从牌堆顶抽 4 张上架，刷新前的商品全部进弃牌堆。
 function rerollShop(room, playerId) {
-  if (!rulesOf(room).shop) return false;
-  if (room.status !== 'playing' || room.paused) return false;
-  if (!Array.isArray(room.shop)) return false;
-  const player = room.players[room.currentIndex];
-  if (!player || player.id !== playerId) return false;     // 只有当前回合的玩家能刷新
-  if (room.wildPending || room.pendingDraw > 0) return false;  // 先处理选色/罚牌
-  if (isStunned(player)) return false;                     // 昏头：这回合只能摸牌，商店锁掉
+  const player = shopPlayerOf(room, playerId);
+  if (!player) return false;
   if (room.shopRerollUsed) return false;                   // 本回合已经刷过
 
   const old = room.shop.map(s => (s && s.card) ? s.card : null).filter(Boolean);
@@ -1252,9 +1259,7 @@ function abortIfTooFewPlayers(room) {
   room.pendingDraw = 0;
   room.pendingDrawType = null;
   room.unoBadge = null;
-  room.paused = false;
-  room.pausedBy = null;
-  room.pausedById = null;
+  resetPause(room);
   addLog(room, '对手都离开了，本局结束');
   return true;
 }
@@ -1675,9 +1680,7 @@ io.on('connection', (socket) => {
     room.grabAvailable = null;
     room.shop = null;       // 结束对局回到房间：商店下架
     room.shopRerollUsed = false;
-    room.paused = false;
-    room.pausedBy = null;
-    room.pausedById = null;
+    resetPause(room);
     addLog(room, '回到房间等待区');
     broadcastRoom(room);
   });
@@ -1728,11 +1731,7 @@ io.on('connection', (socket) => {
       if (dropRoomIfAiOnly(room)) return;
 
       // 被踢的人正好是暂停发起者时，清掉暂停状态，避免全场永久卡在暂停
-      if (room.pausedById === kicked.id) {
-        room.paused = false;
-        room.pausedBy = null;
-        room.pausedById = null;
-      }
+      if (room.pausedById === kicked.id) resetPause(room);
 
       // 修正轮次指针：被踢者在当前位之前则整体前移
       if (room.status === 'playing') {
@@ -1740,15 +1739,7 @@ io.on('connection', (socket) => {
         normalizeCurrentIndex(room);
         if (wasCurrent) {
           // 轮到的人被踢，下一个人顶上来
-          room.justDrew = false;
-          room.aiTurnPending = false;
-          room.aiTurnSeq = null;
-          closeGrabWindow(room);
-          room.wildPending = false;  // 被踢者可能正在选色，不清会永久卡住
-          room.fakeWildCard = null;
-          room.pendingReport = null;
-          room.pendingDraw = 0;      // 被踢者的罚牌不能留给下一个人
-          room.pendingDrawType = null;
+          resetInterruptedTurn(room);
         }
       } else if (room.currentIndex >= room.players.length) {
         room.currentIndex = 0;
@@ -1769,11 +1760,7 @@ io.on('connection', (socket) => {
       room.spectators[sIdx] = null;
       addLog(room, `房主踢出观战者 ${kicked.name}`);
       // 观战席上的房主暂停后被踢，同样要清暂停状态
-      if (room.pausedById === kicked.id) {
-        room.paused = false;
-        room.pausedBy = null;
-        room.pausedById = null;
-      }
+      if (room.pausedById === kicked.id) resetPause(room);
       if (kicked.socketId) {
         const ks = io.sockets.sockets.get(kicked.socketId);
         if (ks) ks.emit('kicked', { reason: '你被房主踢出了观战席' });
@@ -1808,9 +1795,7 @@ io.on('connection', (socket) => {
     if (fromIdx < 0) return;
     if (!Number.isInteger(index) || index < 0 || index > 4) return;  // 非法索引会造出空槽位
     const toIdx = index;
-    const temp = room.spectators[fromIdx];
-    room.spectators[fromIdx] = room.spectators[toIdx];
-    room.spectators[toIdx] = temp;
+    swapSpectators(room, fromIdx, toIdx);
     broadcastRoom(room);
   });
 
@@ -1879,9 +1864,7 @@ io.on('connection', (socket) => {
       socket.emit('swapRequestResult', { accepted: false });
       return;
     }
-    const temp = room.spectators[fromIdx];
-    room.spectators[fromIdx] = room.spectators[toIdx];
-    room.spectators[toIdx] = temp;
+    swapSpectators(room, fromIdx, toIdx);
     addLog(room, `${room.spectators[toIdx].name} 和 ${room.spectators[fromIdx].name} 交换了位置`);
     socket.emit('swapRequestResult', { accepted: true });
     broadcastRoom(room);
@@ -1919,9 +1902,7 @@ io.on('connection', (socket) => {
     if (!room || !room.paused) return;
     // 只有暂停的人或房主可以恢复
     if (room.pausedById !== currentPlayerId && !isRoomOwner(room, socket.id, currentPlayerId)) return;
-    room.paused = false;
-    room.pausedBy = null;
-    room.pausedById = null;
+    resetPause(room);
     room.aiTurnPending = false;
     room.aiTurnSeq = null;
     room.turnSeq = (room.turnSeq || 0) + 1;   // 恢复后重新起排程，旧的定时器一律作废
@@ -1943,11 +1924,7 @@ io.on('connection', (socket) => {
       room.players.splice(idx, 1);
       addLog(room, `${p.name} 退出房间`);
       // 离开的人正好是暂停发起者时，清掉暂停状态，避免全场永久卡在暂停
-      if (room.pausedById === p.id) {
-        room.paused = false;
-        room.pausedBy = null;
-        room.pausedById = null;
-      }
+      if (room.pausedById === p.id) resetPause(room);
       // ✅ 如果退出的是房主 → 转移房主，不给 AI
       if (isRoomOwner(room, socket.id, currentPlayerId)) transferOwner(room, room.ownerSocketId);
       if (room.players.length > 0) {
@@ -1955,16 +1932,7 @@ io.on('connection', (socket) => {
         if (idx < room.currentIndex) room.currentIndex -= 1;
         normalizeCurrentIndex(room);
         if (wasCurrent) {
-          room.justDrew = false;
-          room.aiTurnPending = false;
-          room.aiTurnSeq = null;
-          closeGrabWindow(room);
-          room.wildPending = false;
-          room.fakeWildCard = null;
-          room.pendingReport = null;
-          room.pendingDraw = 0;
-          room.pendingDrawType = null;
-          room.shopRerollUsed = false;   // 换人接手这一回合，刷新次数跟着重置
+          resetInterruptedTurn(room);
           seatTurnChanged = true;        // 回合计时交给下一个人重新计时
         }
       }
@@ -1977,11 +1945,7 @@ io.on('connection', (socket) => {
       room.spectators[specIdx] = null;
       addLog(room, `${s.name} 退出观战席`);
       // 观战席上的房主暂停后离开，同样要清暂停状态
-      if (room.pausedById === s.id) {
-        room.paused = false;
-        room.pausedBy = null;
-        room.pausedById = null;
-      }
+      if (room.pausedById === s.id) resetPause(room);
       if (isRoomOwner(room, socket.id, currentPlayerId)) transferOwner(room, room.ownerSocketId);
     }
     if (dropRoomIfAiOnly(room)) {
