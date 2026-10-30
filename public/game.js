@@ -1527,9 +1527,12 @@ function renderGame(state) {
   } else {
     const left = me.drunkLeft || 0;
     const queued = me.stunLeft || 0;
+    const tip = me.hasDecree
+      ? (me.decreeActive ? '；令还在生效，续酒才可能昏头' : '；令的劲已经过了，再喝只添眼花')
+      : '；再喝只添 1 回合眼花，续酒才可能昏头';
     debuffEl.className = 'hand-debuff drunk';
     debuffEl.textContent = `🍶 眼花：手上的牌都看成万能牌，出牌可选颜色${left ? `（还剩 ${left} 回合）` : ''}` +
-      (queued ? `；之后还要昏头 ${queued} 回合` : '');
+      (queued ? `；之后还要昏头 ${queued} 回合` : '') + tip;
   }
 
   // 手牌：排序时带上 originalIndex，避免 indexOf 错位
@@ -1592,9 +1595,17 @@ function renderGame(state) {
     else if (isSkill) {
       div.title = card.value === 'shu'
         ? '岁牌 · 黍：声明一个颜色，把手上这个颜色的牌洗乱后均分给其他玩家；分不匀的余牌给手牌最少的人；不占回合，每回合限一张'
-        : '岁牌 · 令：接下来 2 个回合眼花（手牌都看成万能牌，能当万能牌打，原牌效果保留），之后昏头 1 回合（出不了牌，摸牌会摸 1~3 张）；还会给自己 1 张「酒」、往牌堆混 4 张「酒」；不占回合，每回合限一张';
+        : '岁牌 · 令：接下来 2 个回合眼花（手牌都看成万能牌，能当万能牌打，原牌效果保留）；打令本身不会昏头，只有眼花还在时续酒才可能上头，令的劲过后喝酒只添眼花；还会给自己 1 张「酒」、往牌堆混 4 张「酒」；不占回合，每回合限一张';
     } else if (fakeWild) div.title = '眼花：这张会当成万能牌打出去（先选颜色），原牌的效果（反转 / +2 / 跳过）照样生效';
-    else if (isItem) div.title = '酒 · 临时道具：喝掉就消失，眼花 +1 回合；喝多了会昏头，昏头叠到 3 层直接烂醉（2 回合不能出牌）';
+    else if (isItem) {
+      const wineTip = !me || !me.hasDecree
+        ? '没喝过令：最多眼花 1 回合；喝之前已经在眼花时续酒才可能昏头（第 2 杯起 80% / 90%）'
+        : (me.decreeActive
+          ? '令还在生效：每杯 +1 回合眼花；第 1 杯必不昏，之后 45% / 65%'
+          : '令的劲已经过了：再喝只添眼花，不会昏头');
+      div.title = '酒 · 临时道具：喝掉就消失、不占回合；' + wineTip +
+        '；昏头叠到 3 层直接烂醉（2 回合不能出牌）';
+    }
     if (isOfficialUI()) div.innerHTML = faceHtml(card);
     else { div.innerHTML = '<span class="card-face"></span>'; div.querySelector('.card-face').textContent = cardText(card); }
     // 眼花：原牌面模糊 + ::after 伪元素叠一层万能牌外观（若影若现），不再额外插 DOM

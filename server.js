@@ -111,17 +111,16 @@ const SHOP_SIZE = 4;
 const MAX_BUY_STREAK = 2;
 
 // ===== 岁牌·令 与「酒」的参数 =====
-// 「令」：先眼花，再昏头；打令时会往牌堆混酒，并给自己 1 张酒（第 8 回合需求）
+// 「令」：只给 2 回合眼花，打令本身不会昏头；打令时往牌堆混酒，并给自己 1 张酒。
+// 只有在令造成的眼花还在生效时继续喝酒，才可能叠加昏头；令的效果结束后再喝只添眼花。
 const DRUNK_TURNS = 2;                     // 令本身给的 2 个回合眼花
-const STUN_TURNS = 1;                      // 令本身挂的 1 个回合昏头（眼花走完才开始扣）
 const DEAD_DRUNK_STACKS = 3;               // 昏头回合数叠到 3 → 烂醉
 const DEAD_DRUNK_TURNS = 2;                // 烂醉：2 个回合不能出牌，且没有眼花
-// 酒：每喝一杯 +1 回合眼花；昏头概率按"已经喝过几杯酒"递增
-// 令自带的那一杯一定不昏头（令本身只排队 1 回合昏头），之后续酒才会掷；
-// 没喝过令的人第一杯就有很大概率昏头
+// 酒：喝过令的人每杯 +1 回合眼花；没喝过令的人只会眼花 1 回合（多喝不叠加）。
+// 只有"喝之前已经在眼花"才会掷昏头；令的效果结束后不再掷。
 const WINE_DRUNK_TURNS = 1;
-const WINE_CHANCE_DECREE = [0, 0.60, 0.80];      // 喝过令：第 1 / 2 / 3+ 杯酒（第一杯必不昏）
-const WINE_CHANCE_OTHER = [0.65, 0.80, 0.90];    // 没喝过令：第 1 / 2 / 3+ 杯酒
+const WINE_CHANCE_DECREE = [0, 0.45, 0.65];      // 令还在生效：第 1 / 2 / 3+ 杯（第一杯必不昏）
+const WINE_CHANCE_OTHER = [0, 0.80, 0.90];       // 没喝过令：第 1 杯不掷，第 2 / 3+ 杯
 const WINE_RESIST_CUT = 0.25;              // 烂醉过一次后，再次喝酒的昏头概率 -25%
 const DRUNK_DRAW_WEIGHTS = [0.85, 0.13, 0.02]; // 昏头/烂醉摸牌：摸 1 / 2 / 3 张的概率（绝大多数只摸 1 张）
 
@@ -135,23 +134,29 @@ function isStunned(p) {
 }
 function isDrunk(p) { return !!p && (p.drunkTurns || 0) > 0 && !isDeadDrunk(p); }
 
-// 一个"自己的回合"走完，负面倒计时减一：
-// 烂醉 > 眼花 > 昏头（眼花期间的昏头先排队，不提前扣）
+// 一个"自己的回合"走完，负面倒计时减一：烂醉 > 眼花 > 昏头（眼花期间的昏头先排队，不提前扣）
 // deadDrunkJustStarted：喝到烂醉的这一回合还没结束，先不扣，保证之后完整锁 2 回合
+// 令的「眼花 + 因此排队的昏头」全部走完 → decreeActive=false，之后再喝酒只添眼花、不再昏头
 function tickDebuff(p) {
   if (!p) return;
   if (isDeadDrunk(p)) {
     if (p.deadDrunkJustStarted) { p.deadDrunkJustStarted = false; return; }
-    p.deadDrunkTurns -= 1;
+    p.deadDrunkTurns = Math.max(0, p.deadDrunkTurns - 1);
     if (p.deadDrunkTurns <= 0) {
-      p.deadDrunkTurns = 0;
       p.drunkTurns = 0;
       p.stunTurns = 0;
+      p.decreeActive = false;
     }
     return;
   }
-  if ((p.drunkTurns || 0) > 0) { p.drunkTurns -= 1; return; }
-  if ((p.stunTurns || 0) > 0) p.stunTurns -= 1;
+  if ((p.drunkTurns || 0) > 0) {
+    p.drunkTurns = Math.max(0, p.drunkTurns - 1);
+  } else if ((p.stunTurns || 0) > 0) {
+    p.stunTurns = Math.max(0, p.stunTurns - 1);
+  }
+  if (p.hasDecree && (p.drunkTurns || 0) === 0 && (p.stunTurns || 0) === 0) {
+    p.decreeActive = false;
+  }
 }
 
 // 叠加昏头；到 3 层直接烂醉：清掉眼花、锁 2 回合、永久获得"酒量抵抗"
@@ -163,6 +168,7 @@ function addHangover(room, player, n = 1) {
     player.deadDrunkJustStarted = true;
     player.drunkTurns = 0;
     player.stunTurns = 0;
+    player.decreeActive = false;   // 令的酒劲已经走到烂醉，之后喝酒只添眼花
     player.wineResist = true;
     player.wineDrinks = 0;   // 烂醉后酒量重置，再次喝酒按第一杯概率（再减抵抗）
     addLog(room, `💀 ${player.name} 喝到烂醉！眼花全没，接下来 ${DEAD_DRUNK_TURNS} 回合不能出牌`);
@@ -390,6 +396,8 @@ function publicRoomState(room, selfPlayer) {
       deadDrunkLeft: Math.max(0, p.deadDrunkTurns || 0),
       wineDrinks: p.wineDrinks || 0,        // 已经喝过几杯酒（用来推算下一杯的昏头概率）
       wineResist: !!p.wineResist,           // 烂醉过一次：再次喝酒昏头概率降低
+      hasDecree: !!p.hasDecree,             // 本局是否用过「令」
+      decreeActive: !!p.decreeActive,       // 令的劲还在：眼花期间续酒才可能昏头
       buyStreak: p.buyStreak || 0,  // 已经连续几个回合用商店买牌（到上限后这回合不能再买）
       isOwner: p.id === room.ownerPlayerId,
       isYou: p.id === selfId,
@@ -526,6 +534,7 @@ function startGame(room) {
     p.stunTurns = 0;        // 排队/生效中的昏头清零
     p.wineDrinks = 0;       // 本局喝过几杯酒
     p.hasDecree = false;    // 本局是否喝过「令」（决定第一杯酒的昏头概率）
+    p.decreeActive = false; // 令的负面窗口（眼花 + 排队昏头）是否还在生效
     p.wineResist = false;   // 本局是否烂醉过（再次喝酒有抵抗）
     p.buyStreak = 0;    // 新的一局：连续买牌计数清零
     p.boughtThisTurn = false;
@@ -750,21 +759,22 @@ function useSkillCard(room, player, cardIndex, chosenColor = null) {
   return true;
 }
 
-// 令：给 2 回合眼花 + 排队 1 回合昏头；同时把 4 张「酒」随机塞进牌堆，并给自己 1 张「酒」
+// 令：只给 2 回合眼花，本身不会昏头；同时把 4 张「酒」随机塞进牌堆，并给自己 1 张「酒」
+// 令还在生效（decreeActive）时继续喝酒才可能上头；令的效果走完后再喝只添眼花
 function applyDecree(room, player) {
   player.hasDecree = true;
+  player.decreeActive = true;
   player.drunkTurns = Math.max(player.drunkTurns || 0, DRUNK_TURNS);
-  addHangover(room, player, STUN_TURNS);   // 酒劲过后才昏，不提前扣
+  player.wineDrinks = 0;   // 每张令之后的第一杯都重新按"必不昏"算
   player.hand.push(makeWineCard());
   injectWineCards(room, WINE_COPIES_PER_DECREE);
-  addLog(room, `${player.name} 中了「令」：眼花 ${DRUNK_TURNS} 回合（手牌都看成万能牌）；${WINE_COPIES_PER_DECREE} 张「酒」混入牌堆，自己拿到 1 张「酒」`);
-  if (!isDeadDrunk(player)) {
-    addLog(room, `「令」的酒劲过后还要昏头 ${player.stunTurns} 回合（继续喝酒会叠加）`);
-  }
+  addLog(room, `${player.name} 中了「令」：眼花 ${DRUNK_TURNS} 回合（手牌都看成万能牌）；打令本身不会昏头，只有眼花期间继续喝酒才可能上头`);
+  addLog(room, `${WINE_COPIES_PER_DECREE} 张「酒」混入牌堆，自己拿到 1 张「酒」`);
 }
 
-// 酒：喝了就消耗（临时道具，不进弃牌堆），+1 回合眼花，并按杯数掷昏头
+// 酒：喝了就消耗（临时道具，不进弃牌堆），添眼花，并按杯数掷昏头
 // 不占回合、不限杯数、不压顶牌；昏头/烂醉时不能喝
+// 只有"喝之前已经在眼花"才会掷昏头：没喝过令的人只添 1 回合眼花；令的效果结束后再喝也只添眼花
 function drinkWine(room, player, cardIndex) {
   if (room.status !== 'playing' || room.paused || room.wildPending) return false;
   if (isStunned(player)) return false;
@@ -776,18 +786,30 @@ function drinkWine(room, player, cardIndex) {
   player.hand.splice(cardIndex, 1);   // 喝完直接消失，不进弃牌堆
   // 喝酒不占回合：不动 justDrew，免得"摸一张能出的牌 → 喝酒 → 再摸一张"
 
-  player.drunkTurns = (player.drunkTurns || 0) + WINE_DRUNK_TURNS;
-  const chance = wineHangoverChance(player);
+  const wasDrunk = isDrunk(player);   // 喝酒前已经在眼花，才有资格掷昏头
+  const beforeDrunk = player.drunkTurns || 0;
+  if (player.hasDecree) {
+    player.drunkTurns = beforeDrunk + WINE_DRUNK_TURNS;   // 令的人可以续酒叠加眼花
+  } else {
+    player.drunkTurns = Math.max(beforeDrunk, WINE_DRUNK_TURNS);   // 其他人最多 1 回合
+  }
+
+  // 令的效果已经走完，再喝只添眼花、不再昏头
+  const canHangover = wasDrunk && (!player.hasDecree || player.decreeActive);
+  const chance = canHangover ? wineHangoverChance(player) : 0;
   player.wineDrinks = (player.wineDrinks || 0) + 1;
   addLog(room, `${player.name} 喝了一杯「酒」：眼花 +${WINE_DRUNK_TURNS} 回合（剩 ${player.drunkTurns}）`);
 
-  if (Math.random() < chance) {
+  if (canHangover && Math.random() < chance) {
     addHangover(room, player, 1);
     if (!isDeadDrunk(player)) {
       addLog(room, `${player.name} 酒后上头：昏头累计 ${player.stunTurns} 回合`);
     }
-  } else {
+  } else if (canHangover) {
     addLog(room, `${player.name} 这杯没上头（昏头概率 ${Math.round(chance * 100)}%）`);
+  } else {
+    const why = (player.hasDecree && !player.decreeActive) ? '令的劲已经过了' : '喝之前没在眼花';
+    addLog(room, `${player.name} 这杯只添眼花，不会昏头（${why}）`);
   }
 
   settleUnoAfterPlay(room, player, myUnoCalled);
