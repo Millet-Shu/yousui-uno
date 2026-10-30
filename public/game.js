@@ -1000,6 +1000,7 @@ const SEAT_RING_8 = [
 
 function cardText(c) {
   if (c.type === 0) return String(c.value);
+  if (c.type === 6) return c.label || '岁';
   return T_LABEL[c.type];
 }
 
@@ -1012,11 +1013,12 @@ const FACE_SYM = { 1: '⊘', 2: '⇄' };
 // 当前颜色对应的提示色（万能牌线框用）
 const COLOR_HEX = { red: '#ff5a52', yellow: '#ffd93d', green: '#57d76e', blue: '#54a6ff' };
 
-// 官方卡面：白色椭圆 + 两角小标；万能牌为四色椭圆，+4 为四张小牌；岁牌是一枚"令"字印章
+// 官方卡面：白色椭圆 + 两角小标；万能牌为四色椭圆，+4 为四张小牌；岁牌是一枚"令 / 黍"字印章
 function faceHtml(card) {
   if (card.type === 6) {
-    return '<span class="cf"><span class="cf-seal">令</span>' +
-      '<span class="cf-tl">岁</span><span class="cf-br">令</span></span>';
+    const label = card.label || '令';
+    return `<span class="cf"><span class="cf-seal">${label}</span>` +
+      `<span class="cf-tl">岁</span><span class="cf-br">${label}</span></span>`;
   }
   if (card.type === 4) {
     return '<span class="cf"><span class="cf-oval cf-rainbow"></span></span>';
@@ -1146,14 +1148,15 @@ function renderShop(state) {
   const me = findMe(state);
   const maxStreak = state.maxBuyStreak || 2;
   const canAct = canShopAct(state);
-  // 连续买牌到上限：这回合商店只能看/刷新，不能买，必须自己出牌或摸牌
-  const buyBlocked = canAct && !!(me && (me.buyStreak || 0) >= maxStreak);
+  // 昏头且轮到自己：这回合只能摸牌，商店整块灰掉（服务端同样拒绝买/刷新）
+  const stunned = !!(me && me.isCurrent && me.stunned);
+  // 连续买牌到上限：轮到自己时商品灰掉（刷新还能用），必须自己出牌或摸牌
+  const buyBlocked = !stunned && !!(me && me.isCurrent && (me.buyStreak || 0) >= maxStreak);
   const canBuy = canBuyShop(state);
   if (!canBuy) { shopPick = null; shopPayIndex = null; }
-  // 整块商店灰掉：不是自己回合 / 昏头 / 正在选色或处理罚牌
-  panel.classList.toggle('locked', !canAct);
-  // 连续买牌到上限：只灰商品，刷新还能用（刷新不过回合）
-  panel.classList.toggle('no-buy', canAct && buyBlocked);
+  // 只有两种情况让商店变灰：昏头整块灰；连续买满两次只灰商品（刷新还能用）
+  panel.classList.toggle('locked', stunned);
+  panel.classList.toggle('no-buy', buyBlocked);
 
   if (shopPick !== null) {
     const slot = shopSlotOf(shop, shopPick);
@@ -1220,7 +1223,7 @@ function renderShop(state) {
     : (!canAct ? '轮到你时才能刷新' : '本回合已经刷新过了');
 
   const hint = $('shop-hint');
-  if (me && me.isCurrent && me.stunned) {
+  if (stunned) {
     hint.textContent = state.pendingDraw > 0
       ? `昏头中：先点摸牌堆收下 +${state.pendingDraw} 罚牌`
       : '昏头中：这回合只能点摸牌堆摸 1~3 张';
@@ -1541,6 +1544,8 @@ function renderGame(state) {
     // 昏头时什么牌都不能出，只能摸牌
     const myPlayTime = myTurn && !state.wildPending && state.status === 'playing' && !myStunned;
     const isSkill = card.type === 6;
+    // 岁牌每回合限一张：自己这回合已经用过，剩下的岁牌灰掉不能再点
+    const skillSpent = isSkill && !!myTurn && !!state.skillUsedThisTurn;
     // 眼花（令的第一段负面）：只有"不是万能牌"的牌才会被看成万能牌（真万能牌和 +4 保持原样）；
     // 顶着罚牌时按真实规则走，所以这时也不叠假万能外观
     const showWildGhost = !!myDrunk && !state.wildPending && state.pendingDraw === 0
@@ -1548,7 +1553,7 @@ function renderGame(state) {
     // 真能当万能牌打出去：自己回合 + 没昏头（罚牌已在 showWildGhost 里排除）
     const fakeWild = showWildGhost && myPlayTime;
     let playable = isSkill
-      ? (myPlayTime && state.pendingDraw === 0)
+      ? (myPlayTime && state.pendingDraw === 0 && !skillSpent)
       : (fakeWild || (myPlayTime && matchesTop(card, state)));
     // wildPending 时整手牌禁用（必须通过颜色弹窗选色，防止乱点把 currentColor 置 null）
     // 可抢牌：手上有和刚打出的牌完全一样的牌（包括自己刚打出的，可连出）
@@ -1557,18 +1562,22 @@ function renderGame(state) {
       card.type === state.grabAvailable.card.type &&
       card.value === state.grabAvailable.card.value;
     div.className = 'hand-card ' + (isSkill ? 'skill' : (card.color || 'none')) + (isOfficialUI() ? ' official' : '');
-    // 昏头：整手牌灰掉、不能点（这一手靠点摸牌堆过去）
-    if (myStunned) div.classList.add('locked');
+    // 昏头（整手牌）或本回合岁牌已用过（只剩岁牌）：灰掉、不能点
+    if (myStunned || skillSpent) div.classList.add('locked');
     if (showWildGhost) div.classList.add('fake-wild');
-    if (isSkill) div.title = '岁牌 · 令：接下来 2 个回合眼花（手牌都看成万能牌，能当万能牌打，原牌效果保留），之后 1 个回合昏头（出不了牌，摸牌会摸 1~3 张）；不占回合';
-    else if (myStunned) div.title = '昏头中：这回合出不了牌，点摸牌堆随机摸 1~3 张';
-    else if (fakeWild) div.title = '眼花：这张会当成万能牌打出去（先选颜色），原牌的效果（反转 / +2 / 跳过）照样生效';
+    if (myStunned) div.title = '昏头中：这回合出不了牌，点摸牌堆随机摸 1~3 张';
+    else if (isSkill && skillSpent) div.title = '岁牌每回合限用一张，这回合已经用过了';
+    else if (isSkill) {
+      div.title = card.value === 'shu'
+        ? '岁牌 · 黍：声明一个颜色，把手上这个颜色的牌洗乱后均分给其他玩家；分不匀的余牌给手牌最少的人；不占回合，每回合限一张'
+        : '岁牌 · 令：接下来 2 个回合眼花（手牌都看成万能牌，能当万能牌打，原牌效果保留），之后 1 个回合昏头（出不了牌，摸牌会摸 1~3 张）；不占回合，每回合限一张';
+    } else if (fakeWild) div.title = '眼花：这张会当成万能牌打出去（先选颜色），原牌的效果（反转 / +2 / 跳过）照样生效';
     if (isOfficialUI()) div.innerHTML = faceHtml(card);
     else { div.innerHTML = '<span class="card-face"></span>'; div.querySelector('.card-face').textContent = cardText(card); }
     // 眼花：原牌面模糊 + ::after 伪元素叠一层万能牌外观（若影若现），不再额外插 DOM
 
     // 昏头：整手牌灰掉、点不动（这一手点摸牌堆摸 1~3 张就过去了）
-    if (myStunned) {
+    if (myStunned || skillSpent) {
       div.onclick = null;
       handEl.appendChild(div);
       return;
@@ -1596,8 +1605,8 @@ function renderGame(state) {
       div.classList.add('grabbable');
       div.onclick = () => socket.emit('grabCard');
     } else if (playable) {
-      // 万能牌 / +4 / 眼花时的任意牌要先选颜色
-      bindHandCardClick(div, originalIndex, card.type === 4 || card.type === 5 || fakeWild);
+      // 万能牌 / +4 / 眼花时的任意牌 / 「黍」要先选颜色
+      bindHandCardClick(div, originalIndex, card.type === 4 || card.type === 5 || fakeWild || (isSkill && card.value === 'shu'));
     } else {
       // 打不出去的牌不再变暗（整手牌一律保持亮着），点选后由服务端拒绝并给出提示
       if (myPlayTime) {

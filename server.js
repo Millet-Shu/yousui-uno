@@ -12,6 +12,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ==================== UNO 核心逻辑 ====================
 
 const COLORS = ['red', 'yellow', 'green', 'blue'];
+const COLOR_CN = { red: '红', yellow: '黄', green: '绿', blue: '蓝', none: '' };
 // 6 = 岁牌（技能牌）。岁牌不进打牌堆顶、不改变当前颜色，用完直接回弃牌堆
 const T = { NUMBER: 0, SKIP: 1, REVERSE: 2, DRAW_TWO: 3, WILD: 4, WILD_DRAW_FOUR: 5, SKILL: 6 };
 
@@ -37,10 +38,11 @@ function createDeck() {
 }
 
 // ===== 岁牌（技能牌）=====
-// 以后要加更多岁牌，就在 SKILL_CARDS 里加一张，再在 SKILL_EFFECTS 里写它的效果即可，
-// 发牌/出牌/进弃牌堆/不计回合一概由 useSkillCard 统一处理
+// 以后要加更多岁牌，就在 SKILL_CARDS 里加一张，再用 useSkillCard 分发到对应的 apply* 效果即可，
+// 发牌/出牌/进弃牌堆/不计回合/每回合限一张概由 useSkillCard 统一处理
 const SKILL_CARDS = [
   { key: 'decree', label: '令', copies: 2 },
+  { key: 'shu', label: '黍', copies: 2 },
 ];
 
 function createSkillDeck() {
@@ -172,12 +174,11 @@ function isPlayable(c, topCard, currentColor, pendingDraw, pendingDrawType, topA
 }
 
 function cardName(c) {
-  const cn = { red: '红', yellow: '黄', green: '绿', blue: '蓝', none: '' };
   switch (c.type) {
-    case T.NUMBER: return cn[c.color] + c.value;
-    case T.SKIP: return cn[c.color] + '跳';
-    case T.REVERSE: return cn[c.color] + '转';
-    case T.DRAW_TWO: return cn[c.color] + '+2';
+    case T.NUMBER: return COLOR_CN[c.color] + c.value;
+    case T.SKIP: return COLOR_CN[c.color] + '跳';
+    case T.REVERSE: return COLOR_CN[c.color] + '转';
+    case T.DRAW_TWO: return COLOR_CN[c.color] + '+2';
     case T.WILD: return '万能';
     case T.WILD_DRAW_FOUR: return '+4';
     case T.SKILL: return '岁牌·' + (c.label || c.value || '?');
@@ -250,6 +251,7 @@ function createRoom(maxPlayers = 4) {
     grabAvailable: null,  // 可以抢牌的状态 { card, playedBy }
     shop: null,           // 有岁商店：4 张在售牌（只有 yousui 模式才有）
     shopRerollUsed: false, // 本回合是否已经刷新过商店（每人每回合一次）
+    skillUsedThisTurn: false, // 本回合是否已经用过岁牌（岁牌每回合限一张）
     log: []
   });
   return rooms.get(code);
@@ -332,6 +334,7 @@ function publicRoomState(room, selfPlayer) {
     shopEnabled: !!rulesOf(room).shop,
     shop: (rulesOf(room).shop && (room.status === 'playing' || room.status === 'grabbing')) ? (room.shop || null) : null,
     shopRerollUsed: !!room.shopRerollUsed,
+    skillUsedThisTurn: !!room.skillUsedThisTurn,   // 本回合岁牌已用掉：剩余岁牌灰掉、不可再打
     maxBuyStreak: MAX_BUY_STREAK,   // 连续买牌上限：前端据此把商店灰掉并提示
     maxPlayers: room.maxPlayers,
     justDrew: !!room.justDrew,
@@ -421,6 +424,7 @@ function startGame(room) {
   room.topAsWild = false;
   room.shop = rules.shop ? buildShop(room) : null;   // 有岁模式：从牌堆抽 4 件商品上架
   room.shopRerollUsed = false;
+  room.skillUsedThisTurn = false;
 
   for (const p of room.players) {
     p.hand = []; p.finished = false; p.rank = null;
@@ -569,9 +573,8 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
 
   // 岁牌：技能牌，用完回弃牌堆、不换人，只能在自己回合用（顶着罚牌时先处理罚牌）
   if (isSkillCard(card)) {
-    if (room.pendingDraw > 0) return;
-    useSkillCard(room, player, cardIndex);
-    return;
+    if (room.pendingDraw > 0) return false;
+    return useSkillCard(room, player, cardIndex, chosenColor);
   }
 
   // 眼花（醉酒）：手上的牌被看成万能牌，任何牌都能当万能牌打（要选色）；
@@ -613,21 +616,32 @@ function settleUnoAfterPlay(room, player, myUnoCalled) {
 }
 
 // ===== 岁牌使用：不换人、不占回合，牌回弃牌堆 =====
-function useSkillCard(room, player, cardIndex) {
+// 岁牌每回合限一张：打完令/黍后本回合不能再打第二张（下回合 advance 时重置）
+function useSkillCard(room, player, cardIndex, chosenColor = null) {
   const card = player.hand[cardIndex];
-  if (!isSkillCard(card) || room.wildPending) return;
-  if (room.status !== 'playing' || room.paused) return;
+  if (!isSkillCard(card) || room.wildPending) return false;
+  if (room.status !== 'playing' || room.paused) return false;
+  if (room.skillUsedThisTurn) return false;   // 本回合已经用过岁牌
+  // 「黍」必须先声明一个颜色；声明了手上没有的颜色时不消耗这张牌，只提示换色
+  if (card.value === 'shu') {
+    if (!COLORS.includes(chosenColor)) return false;
+    if (!player.hand.some(c => c.color === chosenColor)) return 'noColorCards';
+    if (room.players.filter(p => p !== player && !p.finished).length === 0) return false;
+  }
 
   const myUnoCalled = !!room.unoCalled[player.id];
+  room.skillUsedThisTurn = true;
   closeGrabWindow(room);              // 有人已行动，抢牌窗口关闭
   player.hand.splice(cardIndex, 1);
   room.discardPile.push(card);        // 技能牌不压顶牌、不改当前颜色
   room.justDrew = false;
   addLog(room, `${player.name} 打出 ${cardName(card)}`);
-  settleUnoAfterPlay(room, player, myUnoCalled);
 
   if (card.value === 'decree') applyDecree(room, player);
+  else if (card.value === 'shu') applyShu(room, player, chosenColor);
 
+  // 岁牌可能把最后一张打光（黍还会改变手牌数），所以喊牌/举报放在效果结算之后
+  settleUnoAfterPlay(room, player, myUnoCalled);
   checkWin(room);
   // 用岁牌把最后一张打光也算出完：这一手结束，轮到下一位（不然会停在一个没有牌的已出完玩家身上）
   if (player.finished && room.status === 'playing') {
@@ -636,6 +650,7 @@ function useSkillCard(room, player, cardIndex) {
   }
   broadcastRoom(room);
   if (room.status !== 'over') scheduleIfAuto(room, AI_DELAY_EXTRA);
+  return true;
 }
 
 // 令：一张牌都不动，只给负面状态——接下来 DRUNK_TURNS 个回合眼花（非万能的牌都看成万能牌），
@@ -643,6 +658,44 @@ function useSkillCard(room, player, cardIndex) {
 function applyDecree(room, player) {
   player.dizzyTurns = DIZZY_TURNS;
   addLog(room, `${player.name} 中了「令」：眼花 ${DRUNK_TURNS} 回合（手牌都看成万能牌），之后昏头 ${STUN_TURNS} 回合`);
+}
+
+// 黍：声明一个颜色，把自己手上这个颜色的所有牌洗乱后均分给其他玩家；
+// 分不匀的余牌全给"除自己以外手牌最少"的那个人（并列最少时随机挑一个）
+function applyShu(room, player, color) {
+  if (!COLORS.includes(color)) return;
+  const others = room.players.filter(p => p !== player && !p.finished);
+  if (others.length === 0) {
+    addLog(room, `${player.name} 的「黍」没有其他玩家可以分牌`);
+    return;
+  }
+  const given = player.hand.filter(c => c.color === color);
+  if (given.length === 0) {
+    addLog(room, `${player.name} 的「黍」声明了${COLOR_CN[color]}色，但手上没有这个颜色的牌`);
+    return;
+  }
+
+  // 余牌目标按"分牌前"的手牌数选，避免先拿到均分牌的人反而失去资格
+  const minHand = Math.min(...others.map(p => p.hand.length));
+  const leastCandidates = others.filter(p => p.hand.length === minHand);
+  const remainderTarget = leastCandidates[Math.floor(Math.random() * leastCandidates.length)];
+
+  player.hand = player.hand.filter(c => c.color !== color);
+  const pool = shuffle(given.slice());
+  const perPlayer = Math.floor(pool.length / others.length);
+  const remainder = pool.length % others.length;
+
+  // 洗乱后按顺序一人一张均分，保证每人拿到的张数相同
+  let idx = 0;
+  for (let round = 0; round < perPlayer; round++) {
+    for (const p of others) p.hand.push(pool[idx++]);
+  }
+  if (remainder > 0) remainderTarget.hand.push(...pool.slice(idx));
+
+  const detail = others
+    .map(p => `${p.name}+${perPlayer + (p === remainderTarget ? remainder : 0)}`)
+    .join('、');
+  addLog(room, `${player.name} 的「黍」声明${COLOR_CN[color]}色：${pool.length} 张牌分给 ${detail}`);
 }
 
 // 结算一张牌"本身"的效果（不含万能牌选色）。
@@ -745,6 +798,7 @@ function resetInterruptedTurn(room) {
   room.pendingDraw = 0;
   room.pendingDrawType = null;
   room.shopRerollUsed = false;   // 换人接手这一回合，商店刷新次数跟着重置
+  room.skillUsedThisTurn = false; // 换人接手这一回合，岁牌也能重新用一张
 }
 
 // AI 是否愿意抢这张牌：罚牌（+2/+4）不抢，留给自己的回合继续叠加罚牌
@@ -1106,8 +1160,9 @@ function advance(room, countTurn = true) {
   }
   // ✅ 切换玩家时清理 justDrew
   room.justDrew = false;
-  // 新回合开始：本回合的商店刷新次数重置
+  // 新回合开始：本回合的商店刷新次数和岁牌使用记录重置
   room.shopRerollUsed = false;
+  room.skillUsedThisTurn = false;
   // 新回合重新起表（暂停中会自己停掉）
   startTurnClock(room);
 }
@@ -1346,6 +1401,23 @@ function bestHandColor(player) {
   return best;
 }
 
+// AI 挑一张岁牌：手上有同色牌 ≥3 张时优先用「黍」（把一堆同色牌甩给手牌最少的人），
+// 否则用「令」把负面状态丢出去；两张都没有则返回 null
+function aiPickSkill(player) {
+  const shuIndex = player.hand.findIndex(c => isSkillCard(c) && c.value === 'shu');
+  if (shuIndex >= 0) {
+    const counts = {};
+    for (const c of player.hand) {
+      if (COLORS.includes(c.color)) counts[c.color] = (counts[c.color] || 0) + 1;
+    }
+    let color = null;
+    for (const c of COLORS) if ((counts[c] || 0) >= 3 && (!color || counts[c] > counts[color])) color = c;
+    if (color) return { index: shuIndex, color };
+  }
+  const decreeIndex = player.hand.findIndex(c => isSkillCard(c) && c.value === 'decree');
+  return decreeIndex >= 0 ? { index: decreeIndex, color: null } : null;
+}
+
 function aiTurn(room) {
   if (room.status !== 'playing' || room.paused) return;
   const player = room.players[room.currentIndex];
@@ -1381,14 +1453,15 @@ function aiTurn(room) {
   // 岁牌不占回合，用完还能接着出牌：
   // 只剩这一张 → 直接打出去赢；没牌可出 → 先打岁牌，让手牌都能当万能牌；
   // 手牌多 → 有一定概率提前用，别留在手里卡到最后。
-  // 已经眼花时不再重复打（只会刷新负面倒计时，纯浪费），除非这是最后一张
-  const skillIdx = player.hand.findIndex(c => isSkillCard(c));
-  if (skillIdx >= 0 && room.pendingDraw === 0
+  // 已经眼花时不再重复打（只会刷新负面倒计时，纯浪费），除非这是最后一张。
+  // 每回合限一张岁牌：本回合已经用过就不再考虑
+  const skillChoice = room.skillUsedThisTurn ? null : aiPickSkill(player);
+  if (skillChoice && room.pendingDraw === 0
       && (player.hand.length === 1
         || (!isDrunk(player) && (playable.length === 0 || (player.hand.length >= 4 && Math.random() < 0.6))))) {
     // 用岁牌后剩 1 张：和普通出牌一样，AI 有 75% 概率先喊有岁（写在 useSkillCard 之前才来得及结算）
     if (player.hand.length === 2 && Math.random() < 0.75) room.unoCalled[player.id] = true;
-    useSkillCard(room, player, skillIdx);
+    useSkillCard(room, player, skillChoice.index, skillChoice.color);
     return;
   }
 
@@ -1963,7 +2036,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('playCard', ({ cardIndex, chosenColor }) => {
-    if (currentRoom) playCard(currentRoom, currentPlayerId, cardIndex, chosenColor);
+    if (!currentRoom) return;
+    // 「黍」选了手上没有的颜色：牌不消耗，提示换色（useSkillCard 返回这个标记）
+    const result = playCard(currentRoom, currentPlayerId, cardIndex, chosenColor);
+    if (result === 'noColorCards') socket.emit('errorMsg', '你手上没有这个颜色的牌，换一个颜色再打「黍」');
   });
 
   socket.on('grabCard', () => {

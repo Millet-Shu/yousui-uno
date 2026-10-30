@@ -457,7 +457,7 @@ input:focus { border-color: #6c7bff; }
    光条本身的样式与打牌堆的 .wild-ring 共用，见下方那一组 */
 .price-ring { position: absolute; inset: 1px; pointer-events: none; }
 .shop-hint { font-size: 10px; color: #9aa6c8; text-align: center; }
-/* 不能操作商店：整块灰掉（不是自己回合 / 昏头 / 选色或罚牌中） */
+/* 昏头且轮到自己：商店整块灰掉（这回合只能摸牌） */
 .shop-panel.locked .shop-head,
 .shop-panel.locked .shop-items {
   opacity: .4;
@@ -686,7 +686,7 @@ input:focus { border-color: #6c7bff; }
 .hand-card.green { background: #30b050; }
 .hand-card.blue { background: #3070d0; }
 .hand-card.none { background: #333; }
-/* 昏头：整手牌灰掉、不能点（这一手点摸牌堆摸 1~3 张就过去了） */
+/* 昏头或本回合岁牌已用完：整手牌/剩余岁牌灰掉、不能点 */
 .hand-card.locked {
   filter: grayscale(0.8) brightness(0.62);
   opacity: 0.6;
@@ -706,7 +706,7 @@ input:focus { border-color: #6c7bff; }
 }
 
 /* ===== 岁牌（技能牌）===== */
-/* 岁牌是"令"：暗紫底 + 金色印章，和万能牌的黑底区分开 */
+/* 岁牌是"令 / 黍"：暗紫底 + 金色印章，和万能牌的黑底区分开 */
 .hand-card.skill, .card.skill {
   background: linear-gradient(145deg, #3a2159, #1c1130 65%);
   box-shadow: 0 0 0 2px #c9a227, 0 3px 10px rgba(0,0,0,.5);
@@ -719,7 +719,7 @@ input:focus { border-color: #6c7bff; }
   background: linear-gradient(145deg, #3a2159, #1c1130 65%);
   color: #ffd970;
 }
-/* 官方卡面：金色"令"字印章 */
+/* 官方卡面：金色印章（令 / 黍） */
 .cf-seal {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   width: 62%; height: 62%; border-radius: 10%;
