@@ -1112,6 +1112,8 @@ function shopSlotOf(shop, i) {
 function canShopAct(state) {
   const me = state.players.find(p => p.isYou);
   if (!me || !me.isCurrent) return false;
+  // 昏头这一回合只能摸牌，商店也一起锁掉（服务端同样不允许买）
+  if (me.stunned) return false;
   return state.status === 'playing' && !state.paused && !state.wildPending && !(state.pendingDraw > 0);
 }
 
@@ -1210,7 +1212,9 @@ function renderShop(state) {
     : (state.shopRerollUsed ? '本回合已经刷新过了' : '轮到你时才能刷新');
 
   const hint = $('shop-hint');
-  if (buyBlocked) {
+  if (me && me.stunned) {
+    hint.textContent = '昏头中：这回合只能点摸牌堆摸 1~3 张';
+  } else if (buyBlocked) {
     hint.textContent = `已连续 ${me.buyStreak} 回合买牌，这回合必须自己出牌或摸牌`;
   } else if (!canAct) {
     hint.textContent = isSpectator ? '观战中' : '轮到你时才能买 / 刷新';

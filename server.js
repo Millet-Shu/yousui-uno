@@ -1216,6 +1216,7 @@ function rerollShop(room, playerId) {
   const player = room.players[room.currentIndex];
   if (!player || player.id !== playerId) return false;     // 只有当前回合的玩家能刷新
   if (room.wildPending || room.pendingDraw > 0) return false;  // 先处理选色/罚牌
+  if (isStunned(player)) return false;                     // 昏头：这回合只能摸牌，商店锁掉
   if (room.shopRerollUsed) return false;                   // 本回合已经刷过
 
   const old = room.shop.map(s => (s && s.card) ? s.card : null).filter(Boolean);
