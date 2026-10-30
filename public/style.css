@@ -641,6 +641,13 @@ input:focus { border-color: #6c7bff; }
 .hand-debuff.hidden { display: none; }
 .hand-debuff.drunk { background: rgba(106,75,181,.92); color: #e3d6ff; }
 .hand-debuff.stunned { background: rgba(120,86,40,.92); color: #ffdd7a; }
+/* 烂醉：2 回合完全出不了牌，用暗红+呼吸光晕和普通昏头区分 */
+.hand-debuff.dead-drunk {
+  background: rgba(122,23,23,.94);
+  color: #ffd9d9;
+  border: 1px solid rgba(255,130,130,.65);
+  animation: deadPulse 1.8s ease-in-out infinite;
+}
 
 #hand-area {
   position: absolute;
@@ -728,6 +735,31 @@ input:focus { border-color: #6c7bff; }
   color: #ffdd7a; font-weight: 900; font-size: 1.5em; line-height: 1;
   text-shadow: 0 0 10px rgba(255,217,112,.55);
 }
+
+/* ===== 酒（临时道具牌）===== */
+/* 酒只在有人打「令」时出现：绿玻璃瓶身 + 琥珀金标签，和岁牌/万能牌区分 */
+.hand-card.item, .card.item {
+  background: linear-gradient(145deg, #2f5c43, #12291d 65%);
+  box-shadow: 0 0 0 2px #7fd3a1, 0 3px 10px rgba(0,0,0,.5);
+  color: #eafff1;
+}
+.hand-card.item:hover { box-shadow: 0 0 0 2px #b6f5cc, 0 10px 18px rgba(0,0,0,.55); }
+/* 官方卡面：把内层牌面也换成瓶身绿 */
+.hand-card.official.item, .card.official.item {
+  --face: #eafff1;
+  --body: linear-gradient(160deg, #3a7356, #123526);
+}
+/* 官方卡面中央的"酒"字标签 */
+.cf-wine {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 58%; height: 58%; border-radius: 14%;
+  border: 2px solid #e2c169;
+  background: radial-gradient(circle at 35% 30%, rgba(255,240,190,.28), rgba(0,0,0,.25));
+  display: flex; align-items: center; justify-content: center;
+  color: #ffe9ad; font-weight: 900; font-size: 1.45em; line-height: 1;
+  text-shadow: 0 0 10px rgba(255,217,112,.6);
+  z-index: 1;
+}
 /* 眼花（醉酒）：原牌面模糊看不清，再叠一层万能牌外观（黑底白字"万能"）若影若现 */
 .hand-card.fake-wild { position: relative; overflow: hidden; }
 /* 原牌面模糊 + 降低可见度，让人看不清真实牌面 */
@@ -760,6 +792,17 @@ input:focus { border-color: #6c7bff; }
 }
 /* 对手面板上的"昏头/眼花"标记 */
 .drunk-badge { display: inline-block; margin-top: 4px; padding: 2px 8px; background: #6a4bb5; color: #fff; border-radius: 10px; font-size: 12px; font-weight: bold; }
+.drunk-badge.stunned { background: #7a5628; color: #ffdd7a; }
+/* 烂醉：暗红 + 呼吸光晕，和普通昏头/眼花区分 */
+.drunk-badge.dead {
+  background: #7a1717;
+  color: #ffd9d9;
+  animation: deadPulse 1.8s ease-in-out infinite;
+}
+@keyframes deadPulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(255,70,70,.35); }
+  50% { box-shadow: 0 0 14px rgba(255,70,70,.85); }
+}
 
 /* 颜色选择弹窗 */
 .modal {

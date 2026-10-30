@@ -13,8 +13,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const COLORS = ['red', 'yellow', 'green', 'blue'];
 const COLOR_CN = { red: '红', yellow: '黄', green: '绿', blue: '蓝', none: '' };
-// 6 = 岁牌（技能牌）。岁牌不进打牌堆顶、不改变当前颜色，用完直接回弃牌堆
-const T = { NUMBER: 0, SKIP: 1, REVERSE: 2, DRAW_TWO: 3, WILD: 4, WILD_DRAW_FOUR: 5, SKILL: 6 };
+// 6 = 岁牌（技能牌），7 = 酒（临时道具牌，只在有人打「令」时出现）
+// 岁牌/酒都不进打牌堆顶、不改变当前颜色，用完直接消失/回弃牌堆
+const T = { NUMBER: 0, SKIP: 1, REVERSE: 2, DRAW_TWO: 3, WILD: 4, WILD_DRAW_FOUR: 5, SKILL: 6, ITEM: 7 };
 
 function createDeck() {
   const cards = [];
@@ -56,6 +57,13 @@ function createSkillDeck() {
 }
 
 function isSkillCard(c) { return !!c && c.type === T.SKILL; }
+
+// ===== 酒（临时道具牌）=====
+// 有人打出「令」时才凭空生成：4 张随机塞进牌堆，1 张直接给打令的人。
+// 谁都能喝；喝了就消耗掉（不进弃牌堆，避免洗牌后又回流成永久牌）。
+const WINE_COPIES_PER_DECREE = 4;
+function makeWineCard() { return { color: 'none', type: T.ITEM, value: 'wine', label: '酒' }; }
+function isWineCard(c) { return !!c && c.type === T.ITEM; }
 
 function shuffle(arr, rng = Math.random) {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -102,16 +110,82 @@ const SHOP_SIZE = 4;
 // 到上限后这一回合必须自己出牌 / 摸牌（刷新商店不受影响，刷新本来就不过回合）
 const MAX_BUY_STREAK = 2;
 
-// ===== 岁牌·令 的参数 =====
-// 「令」一张牌都不改，只给人添负面状态：先眼花、再昏头
-const DRUNK_TURNS = 2;                     // 眼花 2 个回合：手上非万能的牌都看成万能牌（也能当万能牌打）
-const STUN_TURNS = 1;                      // 眼花走完之后昏头 1 个回合：不能出牌，只能摸牌
-const DIZZY_TURNS = DRUNK_TURNS + STUN_TURNS;
-const DRUNK_DRAW_WEIGHTS = [0.85, 0.13, 0.02]; // 昏头摸牌：摸 1 / 2 / 3 张的概率（绝大多数只摸 1 张）
+// ===== 岁牌·令 与「酒」的参数 =====
+// 「令」：先眼花，再昏头；打令时会往牌堆混酒，并给自己 1 张酒（第 8 回合需求）
+const DRUNK_TURNS = 2;                     // 令本身给的 2 个回合眼花
+const STUN_TURNS = 1;                      // 令本身挂的 1 个回合昏头（眼花走完才开始扣）
+const DEAD_DRUNK_STACKS = 3;               // 昏头回合数叠到 3 → 烂醉
+const DEAD_DRUNK_TURNS = 2;                // 烂醉：2 个回合不能出牌，且没有眼花
+// 酒：每喝一杯 +1 回合眼花；昏头概率按"已经喝过几杯酒"递增
+// 令自带的那一杯一定不昏头（令本身只排队 1 回合昏头），之后续酒才会掷；
+// 没喝过令的人第一杯就有很大概率昏头
+const WINE_DRUNK_TURNS = 1;
+const WINE_CHANCE_DECREE = [0, 0.60, 0.80];      // 喝过令：第 1 / 2 / 3+ 杯酒（第一杯必不昏）
+const WINE_CHANCE_OTHER = [0.65, 0.80, 0.90];    // 没喝过令：第 1 / 2 / 3+ 杯酒
+const WINE_RESIST_CUT = 0.25;              // 烂醉过一次后，再次喝酒的昏头概率 -25%
+const DRUNK_DRAW_WEIGHTS = [0.85, 0.13, 0.02]; // 昏头/烂醉摸牌：摸 1 / 2 / 3 张的概率（绝大多数只摸 1 张）
 
-// 用一个倒计时表示「令」的负面：剩得多的那几回合是眼花，最后 STUN_TURNS 回合变成昏头
-function isStunned(p) { return !!p && p.dizzyTurns > 0 && p.dizzyTurns <= STUN_TURNS; }
-function isDrunk(p) { return !!p && p.dizzyTurns > STUN_TURNS; }
+// 眼花/昏头是两段：drunkTurns > 0 时是眼花（stunTurns 先排队），
+// 眼花走完才轮到 stunTurns；stunTurns 叠到 3 立刻转烂醉（清空眼花，锁 2 回合）
+function isDeadDrunk(p) { return !!p && (p.deadDrunkTurns || 0) > 0; }
+function isStunned(p) {
+  if (!p) return false;
+  if (isDeadDrunk(p)) return true;
+  return (p.drunkTurns || 0) === 0 && (p.stunTurns || 0) > 0;
+}
+function isDrunk(p) { return !!p && (p.drunkTurns || 0) > 0 && !isDeadDrunk(p); }
+
+// 一个"自己的回合"走完，负面倒计时减一：
+// 烂醉 > 眼花 > 昏头（眼花期间的昏头先排队，不提前扣）
+// deadDrunkJustStarted：喝到烂醉的这一回合还没结束，先不扣，保证之后完整锁 2 回合
+function tickDebuff(p) {
+  if (!p) return;
+  if (isDeadDrunk(p)) {
+    if (p.deadDrunkJustStarted) { p.deadDrunkJustStarted = false; return; }
+    p.deadDrunkTurns -= 1;
+    if (p.deadDrunkTurns <= 0) {
+      p.deadDrunkTurns = 0;
+      p.drunkTurns = 0;
+      p.stunTurns = 0;
+    }
+    return;
+  }
+  if ((p.drunkTurns || 0) > 0) { p.drunkTurns -= 1; return; }
+  if ((p.stunTurns || 0) > 0) p.stunTurns -= 1;
+}
+
+// 叠加昏头；到 3 层直接烂醉：清掉眼花、锁 2 回合、永久获得"酒量抵抗"
+function addHangover(room, player, n = 1) {
+  if (!player || isDeadDrunk(player)) return;
+  player.stunTurns = (player.stunTurns || 0) + n;
+  if (player.stunTurns >= DEAD_DRUNK_STACKS) {
+    player.deadDrunkTurns = DEAD_DRUNK_TURNS;
+    player.deadDrunkJustStarted = true;
+    player.drunkTurns = 0;
+    player.stunTurns = 0;
+    player.wineResist = true;
+    player.wineDrinks = 0;   // 烂醉后酒量重置，再次喝酒按第一杯概率（再减抵抗）
+    addLog(room, `💀 ${player.name} 喝到烂醉！眼花全没，接下来 ${DEAD_DRUNK_TURNS} 回合不能出牌`);
+  }
+}
+
+// 这一杯酒的昏头概率：按"喝过令没有 + 已经喝过几杯酒 + 是否有酒量抵抗"
+function wineHangoverChance(player) {
+  const table = player.hasDecree ? WINE_CHANCE_DECREE : WINE_CHANCE_OTHER;
+  const idx = Math.min(player.wineDrinks || 0, table.length - 1);
+  let chance = table[idx];
+  // 概率为 0 的那一杯（令的下一杯）不掷昏头，抵抗也不改变"必不昏"的结论
+  if (player.wineResist && chance > 0) chance -= WINE_RESIST_CUT;
+  return Math.max(0, Math.min(0.95, chance));
+}
+
+// 往牌堆任意位置塞酒（可被任何人摸进手里）
+function injectWineCards(room, n) {
+  for (let i = 0; i < n; i++) {
+    const idx = Math.floor(Math.random() * (room.drawPile.length + 1));
+    room.drawPile.splice(idx, 0, makeWineCard());
+  }
+}
 
 // 昏头时摸几张：按权重抽 1~3 张
 function rollDrunkDraw() {
@@ -127,8 +201,16 @@ function rollDrunkDraw() {
 // 商品直接从牌堆拿牌（所以牌堆真的会少牌）。
 // 万能牌/岁牌本身没有颜色，就在上架时随机给它定一个"价签颜色"，用同色牌就能买走。
 function makeShopSlot(room) {
-  if (room.drawPile.length === 0) reshuffleIntoDraw(room);
-  const card = room.drawPile.pop() || null;
+  let card = null;
+  // 酒是临时道具，不上商店货架：抽到就放回牌堆底部再抽下一张
+  for (let guard = 0; guard < 20; guard++) {
+    if (room.drawPile.length === 0) reshuffleIntoDraw(room);
+    const c = room.drawPile.pop() || null;
+    if (!c) return null;
+    if (isWineCard(c)) { room.drawPile.unshift(c); continue; }
+    card = c;
+    break;
+  }
   if (!card) return null;
   const priceColor = (isWild(card) || card.color === 'none')
     ? COLORS[Math.floor(Math.random() * COLORS.length)]
@@ -151,7 +233,9 @@ function refillShop(room) {
 
 function isWild(c) { return c.type === T.WILD || c.type === T.WILD_DRAW_FOUR; }
 
+// 酒是道具牌，不参与顶牌颜色/数字匹配（只能在自己的回合"喝"）
 function isPlayable(c, topCard, currentColor, pendingDraw, pendingDrawType, topAsWild) {
+  if (isWineCard(c)) return false;
   // 有叠加罚牌时
   if (pendingDraw > 0 && pendingDrawType) {
     if (pendingDrawType === T.WILD_DRAW_FOUR) {
@@ -182,6 +266,7 @@ function cardName(c) {
     case T.WILD: return '万能';
     case T.WILD_DRAW_FOUR: return '+4';
     case T.SKILL: return '岁牌·' + (c.label || c.value || '?');
+    case T.ITEM: return '酒';
   }
 }
 
@@ -297,9 +382,14 @@ function publicRoomState(room, selfPlayer) {
       finished: !!p.finished,
       rank: p.rank || null,
       unoAnnounced: !!(room.unoBadge && room.unoBadge.playerId === p.id),
-      stunned: isStunned(p),        // 昏头：这回合不能出牌，只能摸牌
+      stunned: isStunned(p),        // 昏头/烂醉：这回合不能出牌，只能摸牌
       drunk: isDrunk(p),            // 眼花：非万能的牌都看成万能牌
-      drunkLeft: Math.max(0, (p.dizzyTurns || 0) - STUN_TURNS),  // 还剩几个回合眼花
+      drunkLeft: Math.max(0, p.drunkTurns || 0),   // 还剩几个回合眼花
+      stunLeft: Math.max(0, p.stunTurns || 0),     // 眼花走完后还要昏头几个回合
+      deadDrunk: isDeadDrunk(p),    // 烂醉：没有眼花，锁 2 回合
+      deadDrunkLeft: Math.max(0, p.deadDrunkTurns || 0),
+      wineDrinks: p.wineDrinks || 0,        // 已经喝过几杯酒（用来推算下一杯的昏头概率）
+      wineResist: !!p.wineResist,           // 烂醉过一次：再次喝酒昏头概率降低
       buyStreak: p.buyStreak || 0,  // 已经连续几个回合用商店买牌（到上限后这回合不能再买）
       isOwner: p.id === room.ownerPlayerId,
       isYou: p.id === selfId,
@@ -430,7 +520,13 @@ function startGame(room) {
   for (const p of room.players) {
     p.hand = []; p.finished = false; p.rank = null;
     p.aiProxy = !!p.offline;  // 开局就离线的玩家由 AI 代理
-    p.dizzyTurns = 0;   // 新的一局：「令」的负面（眼花/昏头）清零
+    p.deadDrunkTurns = 0;   // 新的一局：烂醉清零
+    p.deadDrunkJustStarted = false;
+    p.drunkTurns = 0;       // 眼花清零
+    p.stunTurns = 0;        // 排队/生效中的昏头清零
+    p.wineDrinks = 0;       // 本局喝过几杯酒
+    p.hasDecree = false;    // 本局是否喝过「令」（决定第一杯酒的昏头概率）
+    p.wineResist = false;   // 本局是否烂醉过（再次喝酒有抵抗）
     p.buyStreak = 0;    // 新的一局：连续买牌计数清零
     p.boughtThisTurn = false;
   }
@@ -493,8 +589,8 @@ function grabLead(room, playerId) {
     return;
   }
   let guard = 0;
-  // 起始牌必须是带颜色的普通牌：万能牌和岁牌（color = none）都会让 currentColor 变成 none，谁都出不了牌
-  while (starter && (isWild(starter) || isSkillCard(starter)) && guard < 20) {
+  // 起始牌必须是带颜色的普通牌：万能牌、岁牌和酒（color = none）都会让 currentColor 变成 none，谁都出不了牌
+  while (starter && (isWild(starter) || isSkillCard(starter) || isWineCard(starter)) && guard < 20) {
     room.drawPile.unshift(starter);
     starter = room.drawPile.pop();
     guard++;
@@ -503,9 +599,9 @@ function grabLead(room, playerId) {
   room.playPile.push(starter);
   room.topCard = starter;
   room.topAsWild = false;
-  // 连续抽到万能牌导致循环用尽 guard 时，起始牌仍是万能牌（color = none），必须随机给一个颜色，
+  // 连续抽到万能牌/岁牌/酒导致循环用尽 guard 时，起始牌仍是 color = none，必须随机给一个颜色，
   // 否则 currentColor 会是 'none'，之后谁都出不了牌、整个对局卡死
-  room.currentColor = (isWild(starter) || isSkillCard(starter))
+  room.currentColor = (isWild(starter) || isSkillCard(starter) || isWineCard(starter))
     ? COLORS[Math.floor(Math.random() * COLORS.length)]
     : starter.color;
   room.status = 'playing';
@@ -577,6 +673,9 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
     if (room.pendingDraw > 0) return false;
     return useSkillCard(room, player, cardIndex, chosenColor);
   }
+
+  // 酒：临时道具牌，喝了就消耗，不占回合、不压顶牌；一回合不限杯数
+  if (isWineCard(card)) return drinkWine(room, player, cardIndex);
 
   // 眼花（醉酒）：手上的牌被看成万能牌，任何牌都能当万能牌打（要选色）；
   // 但顶着罚牌时仍按真实规则走，不能靠眼花逃掉 +2/+4
@@ -651,11 +750,52 @@ function useSkillCard(room, player, cardIndex, chosenColor = null) {
   return true;
 }
 
-// 令：一张牌都不动，只给负面状态——接下来 DRUNK_TURNS 个回合眼花（非万能的牌都看成万能牌），
-// 眼花走完之后再昏头 STUN_TURNS 个回合（出不了牌，摸牌会摸 1~3 张）
+// 令：给 2 回合眼花 + 排队 1 回合昏头；同时把 4 张「酒」随机塞进牌堆，并给自己 1 张「酒」
 function applyDecree(room, player) {
-  player.dizzyTurns = DIZZY_TURNS;
-  addLog(room, `${player.name} 中了「令」：眼花 ${DRUNK_TURNS} 回合（手牌都看成万能牌），之后昏头 ${STUN_TURNS} 回合`);
+  player.hasDecree = true;
+  player.drunkTurns = Math.max(player.drunkTurns || 0, DRUNK_TURNS);
+  addHangover(room, player, STUN_TURNS);   // 酒劲过后才昏，不提前扣
+  player.hand.push(makeWineCard());
+  injectWineCards(room, WINE_COPIES_PER_DECREE);
+  addLog(room, `${player.name} 中了「令」：眼花 ${DRUNK_TURNS} 回合（手牌都看成万能牌）；${WINE_COPIES_PER_DECREE} 张「酒」混入牌堆，自己拿到 1 张「酒」`);
+  if (!isDeadDrunk(player)) {
+    addLog(room, `「令」的酒劲过后还要昏头 ${player.stunTurns} 回合（继续喝酒会叠加）`);
+  }
+}
+
+// 酒：喝了就消耗（临时道具，不进弃牌堆），+1 回合眼花，并按杯数掷昏头
+// 不占回合、不限杯数、不压顶牌；昏头/烂醉时不能喝
+function drinkWine(room, player, cardIndex) {
+  if (room.status !== 'playing' || room.paused || room.wildPending) return false;
+  if (isStunned(player)) return false;
+  const card = player.hand[cardIndex];
+  if (!isWineCard(card)) return false;
+
+  const myUnoCalled = !!room.unoCalled[player.id];
+  closeGrabWindow(room);   // 有人行动，抢牌窗口关闭
+  player.hand.splice(cardIndex, 1);   // 喝完直接消失，不进弃牌堆
+  // 喝酒不占回合：不动 justDrew，免得"摸一张能出的牌 → 喝酒 → 再摸一张"
+
+  player.drunkTurns = (player.drunkTurns || 0) + WINE_DRUNK_TURNS;
+  const chance = wineHangoverChance(player);
+  player.wineDrinks = (player.wineDrinks || 0) + 1;
+  addLog(room, `${player.name} 喝了一杯「酒」：眼花 +${WINE_DRUNK_TURNS} 回合（剩 ${player.drunkTurns}）`);
+
+  if (Math.random() < chance) {
+    addHangover(room, player, 1);
+    if (!isDeadDrunk(player)) {
+      addLog(room, `${player.name} 酒后上头：昏头累计 ${player.stunTurns} 回合`);
+    }
+  } else {
+    addLog(room, `${player.name} 这杯没上头（昏头概率 ${Math.round(chance * 100)}%）`);
+  }
+
+  settleUnoAfterPlay(room, player, myUnoCalled);
+  checkWin(room);          // 酒是最后一张手牌时，喝完也算出完
+  ensureActiveTurn(room);  // 出完手牌就把回合交给下一位，别停在已结束的人身上
+  broadcastRoom(room);
+  if (room.status !== 'over') scheduleIfAuto(room, AI_DELAY_EXTRA);
+  return true;
 }
 
 // 黍：声明一个颜色，把自己手上这个颜色的所有牌洗乱后均分给其他玩家；
@@ -911,7 +1051,7 @@ function drawCard(room, playerId) {
     const n = rollDrunkDraw();
     const drawn = drawCards(room, n);
     player.hand.push(...drawn);
-    addLog(room, `${player.name} 昏头中，手一抖摸到 ${drawn.length} 张牌，这回合就过去了`);
+    addLog(room, `${player.name} ${isDeadDrunk(player) ? '烂醉' : '昏头'}中，手一抖摸到 ${drawn.length} 张牌，这回合就过去了`);
     room.justDrew = false;
     advance(room);
     room.unoBadge = null;
@@ -1123,7 +1263,7 @@ function timeoutTurn(room) {
   }
 
   // 普通超时：摸一张就走（摸到能出的也直接过，挂机就是挂机）
-  // 昏头时按"昏头规则"走 drawCard 那条路（随机 1~3 张然后换人）
+  // 昏头/烂醉时按规则走 drawCard 那条路（随机 1~3 张然后换人）
   if (isStunned(player) && room.pendingDraw === 0) {
     drawCard(room, player.id);
     return;
@@ -1153,9 +1293,9 @@ function advance(room, countTurn = true) {
     guard++;
   }
   room.currentIndex = next;
-  // 「令」的负面按"自己的回合"结算：谁的回合走完，谁的倒计时减一
+  // 「令」/酒的负面按"自己的回合"结算：谁的回合走完，谁的倒计时减一
   if (prev && countTurn) {
-    if (prev.dizzyTurns > 0) prev.dizzyTurns -= 1;
+    tickDebuff(prev);
     // 连续买牌计数：这一回合没买就断开（买了的已经在 buyShopCard 里 +1 过了）
     if (!prev.boughtThisTurn) prev.buyStreak = 0;
     prev.boughtThisTurn = false;
@@ -1455,7 +1595,7 @@ function aiTurn(room) {
     return;
   }
 
-  // 昏头：AI 也只能摸牌（drawCard 会按昏头规则摸 1~3 张后换人）
+  // 昏头/烂醉：AI 也只能摸牌（drawCard 会按规则摸 1~3 张后换人）
   if (isStunned(player)) { drawCard(room, player.id); return; }
 
   // 眼花：非万能牌也能当万能牌打（原牌功能保留，颜色自己选）
@@ -1488,11 +1628,21 @@ function aiTurn(room) {
     let fakeScore = -1;
     for (let i = 0; i < player.hand.length; i++) {
       const c = player.hand[i];
-      if (isWild(c) || isSkillCard(c)) continue;
+      if (isWild(c) || isSkillCard(c) || isWineCard(c)) continue;
       const score = aiCardValue(c, player.hand);
       if (score > fakeScore) { fakeScore = score; fakeIdx = i; }
     }
     if (fakeIdx >= 0) { playCard(room, player.id, fakeIdx, bestHandColor(player)); return; }
+  }
+
+  // 酒：手里有酒、又没牌可出时，AI 有概率先喝一杯换眼花（喝酒不占回合，喝完还能接着出）
+  // 已经眼花就不重复喝了（再喝只会堆昏头）；顶着罚牌时先处理罚牌
+  if (playable.length === 0 && !isDrunk(player) && room.pendingDraw === 0) {
+    const wineIdx = player.hand.findIndex(isWineCard);
+    if (wineIdx >= 0 && Math.random() < 0.6) {
+      drinkWine(room, player, wineIdx);
+      return;
+    }
   }
 
   if (playable.length === 0) {

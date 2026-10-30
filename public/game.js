@@ -978,7 +978,7 @@ function renderLobby(state) {
 }
 
 // ===== 渲染游戏页 =====
-const T_LABEL = { 0: '', 1: '⊘', 2: '⇄', 3: '+2', 4: '万能', 5: '+4', 6: '令' };
+const T_LABEL = { 0: '', 1: '⊘', 2: '⇄', 3: '+2', 4: '万能', 5: '+4', 6: '令', 7: '酒' };
 
 // 座位坐标（百分比）：按对手数量选环，避开底部手牌区
 const SEAT_RING_1 = [{ x: 50, y: 17 }];
@@ -1001,6 +1001,7 @@ const SEAT_RING_8 = [
 function cardText(c) {
   if (c.type === 0) return String(c.value);
   if (c.type === 6) return c.label || '岁';
+  if (c.type === 7) return c.label || '酒';
   return T_LABEL[c.type];
 }
 
@@ -1019,6 +1020,11 @@ function faceHtml(card) {
     const label = card.label || '令';
     return `<span class="cf"><span class="cf-seal">${label}</span>` +
       `<span class="cf-tl">岁</span><span class="cf-br">${label}</span></span>`;
+  }
+  // 酒：临时道具牌，瓶盖印章 + "道具"角标
+  if (card.type === 7) {
+    return '<span class="cf"><span class="cf-wine">酒</span>' +
+      '<span class="cf-tl">道具</span><span class="cf-br">酒</span></span>';
   }
   if (card.type === 4) {
     return '<span class="cf"><span class="cf-oval cf-rainbow"></span></span>';
@@ -1058,7 +1064,7 @@ function paintTopCard(el, card) {
     el.innerHTML = '<span class="card-face">?</span>';
     return;
   }
-  const cls = card.type === 6 ? 'skill' : (card.color === 'none' ? 'wild' : card.color);
+  const cls = card.type === 6 ? 'skill' : (card.type === 7 ? 'item' : (card.color === 'none' ? 'wild' : card.color));
   el.className = 'card ' + cls + (official ? ' official' : '');
   // 万能牌颜色用边框上的彩色流动条表示（#top-card-wrap .wild-ring），不靠 box-shadow
   if (official) { el.innerHTML = faceHtml(card); return; }
@@ -1070,6 +1076,7 @@ function paintTopCard(el, card) {
 // 这张牌现在能不能打在顶牌上：规则与服务端 isPlayable 完全一致
 // （罚牌叠加只认 +2/+4；万能牌随时能打；同色 / 同数字 / 同功能可以打）
 function matchesTop(card, state) {
+  if (card.type === 7) return false;                          // 酒是道具牌，只能喝、不能压顶
   const pd = state.pendingDraw || 0;
   const pdt = state.pendingDrawType || 0;
   if (pd > 0 && pdt) {
@@ -1317,7 +1324,9 @@ function renderGame(state) {
     const reportBtn = (state.pendingReport && state.pendingReport.playerId === p.id && !p.isYou && !isSpectator)
       ? `<button class="report-btn" onclick="socket.emit('reportUno')">举报</button>` : '';
     // 岁牌副作用状态：昏头（这回合只能摸牌）/ 眼花（手牌看成万能牌）
-    const drunkLabel = (p.stunned || p.drunk)
+    const drunkLabel = p.deadDrunk
+      ? `<div class="drunk-badge dead" title="烂醉：还剩 ${p.deadDrunkLeft} 回合不能出牌（没有眼花）">💀 烂醉 ${p.deadDrunkLeft}</div>`
+      : (p.stunned || p.drunk)
       ? `<div class="drunk-badge" title="${p.stunned ? '昏头：这回合只能摸牌' : '眼花：手牌被看成万能牌'}">${p.stunned ? '🍶 昏头' : '🍶 眼花'}</div>`
       : '';
     let cardsHtml = '';
@@ -1344,8 +1353,9 @@ function renderGame(state) {
   // 状态栏
   const me = findMe(state);
   const myTurn = state.players.find(p => p.isYou && p.isCurrent);
-  const myStunned = !!(me && me.stunned);   // 昏头：这回合不能出牌，只能摸牌
+  const myStunned = !!(me && me.stunned);   // 昏头：这回合不能出牌，只能摸牌（烂醉也算在 stunned 里）
   const myDrunk = !!(me && me.drunk);       // 眼花：非万能的牌都看成万能牌
+  const myDeadDrunk = !!(me && me.deadDrunk); // 烂醉：没有眼花，2 回合完全不能出牌
   if (state.status === 'over') {
     $('status-text').textContent = '游戏结束！';
   } else if (state.status === 'grabbing') {
@@ -1354,6 +1364,8 @@ function renderGame(state) {
     $('status-text').textContent = `⚡ ${escapeHtml(state.grabAvailable.playedBy)} 刚打出 ${cardText(state.grabAvailable.card)}，点下方「抢相同的牌」按钮才抢（直接点手牌不算）`;
   } else if (state.wildPending && myTurn) {
     $('status-text').textContent = '请选择颜色';
+  } else if (myTurn && myDeadDrunk) {
+    $('status-text').textContent = `💀 烂醉：还剩 ${me.deadDrunkLeft || 0} 回合完全不能出牌，点摸牌堆硬撑过去`;
   } else if (myTurn && myStunned) {
     $('status-text').textContent = '🍶 昏头：这回合出不了牌，点摸牌堆吧';
   } else if (myTurn && state.pendingDraw > 0) {
@@ -1502,17 +1514,22 @@ function renderGame(state) {
   // 有岁商店（不管是不是观战都渲染，观战只读）
   renderShop(state);
 
-  // 「令」的负面效果：贴在手牌正上方写清楚现在处于哪一段
+  // 「令」/酒的负面效果：贴在手牌正上方写清楚现在处于哪一段
   const debuffEl = $('hand-debuff');
   if (isSpectator || (!myStunned && !myDrunk)) {
     debuffEl.className = 'hand-debuff hidden';
+  } else if (myDeadDrunk) {
+    debuffEl.className = 'hand-debuff dead-drunk';
+    debuffEl.textContent = `💀 烂醉：还剩 ${me.deadDrunkLeft || 0} 回合完全不能出牌（没有眼花），点牌堆摸 1~3 张度过`;
   } else if (myStunned) {
     debuffEl.className = 'hand-debuff stunned';
-    debuffEl.textContent = '🍶 昏头：这回合出不了牌，点牌堆会摸 1~3 张';
+    debuffEl.textContent = `🍶 昏头：这回合出不了牌，点牌堆会摸 1~3 张${me.stunLeft > 1 ? `（还剩 ${me.stunLeft} 回合）` : ''}`;
   } else {
     const left = me.drunkLeft || 0;
+    const queued = me.stunLeft || 0;
     debuffEl.className = 'hand-debuff drunk';
-    debuffEl.textContent = `🍶 眼花：手上的牌都看成万能牌，出牌可选颜色${left ? `（还剩 ${left} 回合）` : ''}`;
+    debuffEl.textContent = `🍶 眼花：手上的牌都看成万能牌，出牌可选颜色${left ? `（还剩 ${left} 回合）` : ''}` +
+      (queued ? `；之后还要昏头 ${queued} 回合` : '');
   }
 
   // 手牌：排序时带上 originalIndex，避免 indexOf 错位
@@ -1529,9 +1546,10 @@ function renderGame(state) {
   // 关键修复：给每张牌附上原始索引
   const indexed = state.yourHand.map((card, originalIndex) => ({ card, originalIndex }));
   indexed.sort((a, b) => {
-    // 岁牌（技能牌）排最前面，颜色牌按红黄绿蓝，万能牌最后
-    const ca = a.card.type === 6 ? -1 : (colorOrder[a.card.color] ?? 4);
-    const cb = b.card.type === 6 ? -1 : (colorOrder[b.card.color] ?? 4);
+    // 岁牌（技能牌）和酒（道具牌）排最前面，颜色牌按红黄绿蓝，万能牌最后
+    const front = c => (c.type === 6 ? 16 : (c.type === 7 ? 17 : null));
+    const ca = front(a.card) ?? (colorOrder[a.card.color] ?? 4);
+    const cb = front(b.card) ?? (colorOrder[b.card.color] ?? 4);
     if (ca !== cb) return ca - cb;
     const ta = a.card.type === 0 ? a.card.value : a.card.type + 10;
     const tb = b.card.type === 0 ? b.card.value : b.card.type + 10;
@@ -1544,24 +1562,28 @@ function renderGame(state) {
     // 昏头时什么牌都不能出，只能摸牌
     const myPlayTime = myTurn && !state.wildPending && state.status === 'playing' && !myStunned;
     const isSkill = card.type === 6;
+    const isItem = card.type === 7;
     // 岁牌每回合限一张：自己这回合已经用过，剩下的岁牌灰掉不能再点
     const skillSpent = isSkill && !!myTurn && !!state.skillUsedThisTurn;
     // 眼花（令的第一段负面）：只有"不是万能牌"的牌才会被看成万能牌（真万能牌和 +4 保持原样）；
     // 顶着罚牌时按真实规则走，所以这时也不叠假万能外观
     const showWildGhost = !!myDrunk && !state.wildPending && state.pendingDraw === 0
-      && card.type !== 4 && card.type !== 5 && !isSkill;
+      && card.type !== 4 && card.type !== 5 && !isSkill && !isItem;
     // 真能当万能牌打出去：自己回合 + 没昏头（罚牌已在 showWildGhost 里排除）
     const fakeWild = showWildGhost && myPlayTime;
-    let playable = isSkill
-      ? (myPlayTime && state.pendingDraw === 0 && !skillSpent)
-      : (fakeWild || (myPlayTime && matchesTop(card, state)));
+    // 酒：自己回合随时能喝（不占回合、不限杯数、不需要和顶牌匹配）
+    let playable = isItem
+      ? myPlayTime
+      : (isSkill
+        ? (myPlayTime && state.pendingDraw === 0 && !skillSpent)
+        : (fakeWild || (myPlayTime && matchesTop(card, state))));
     // wildPending 时整手牌禁用（必须通过颜色弹窗选色，防止乱点把 currentColor 置 null）
     // 可抢牌：手上有和刚打出的牌完全一样的牌（包括自己刚打出的，可连出）
     const canGrabCard = !myTurn && state.status === 'playing' && !state.wildPending && state.grabAvailable &&
       card.color === state.grabAvailable.card.color &&
       card.type === state.grabAvailable.card.type &&
       card.value === state.grabAvailable.card.value;
-    div.className = 'hand-card ' + (isSkill ? 'skill' : (card.color || 'none')) + (isOfficialUI() ? ' official' : '');
+    div.className = 'hand-card ' + (isSkill ? 'skill' : (isItem ? 'item' : (card.color || 'none'))) + (isOfficialUI() ? ' official' : '');
     // 昏头（整手牌）或本回合岁牌已用过（只剩岁牌）：灰掉、不能点
     if (myStunned || skillSpent) div.classList.add('locked');
     if (showWildGhost) div.classList.add('fake-wild');
@@ -1570,8 +1592,9 @@ function renderGame(state) {
     else if (isSkill) {
       div.title = card.value === 'shu'
         ? '岁牌 · 黍：声明一个颜色，把手上这个颜色的牌洗乱后均分给其他玩家；分不匀的余牌给手牌最少的人；不占回合，每回合限一张'
-        : '岁牌 · 令：接下来 2 个回合眼花（手牌都看成万能牌，能当万能牌打，原牌效果保留），之后 1 个回合昏头（出不了牌，摸牌会摸 1~3 张）；不占回合，每回合限一张';
+        : '岁牌 · 令：接下来 2 个回合眼花（手牌都看成万能牌，能当万能牌打，原牌效果保留），之后昏头 1 回合（出不了牌，摸牌会摸 1~3 张）；还会给自己 1 张「酒」、往牌堆混 4 张「酒」；不占回合，每回合限一张';
     } else if (fakeWild) div.title = '眼花：这张会当成万能牌打出去（先选颜色），原牌的效果（反转 / +2 / 跳过）照样生效';
+    else if (isItem) div.title = '酒 · 临时道具：喝掉就消失，眼花 +1 回合；喝多了会昏头，昏头叠到 3 层直接烂醉（2 回合不能出牌）';
     if (isOfficialUI()) div.innerHTML = faceHtml(card);
     else { div.innerHTML = '<span class="card-face"></span>'; div.querySelector('.card-face').textContent = cardText(card); }
     // 眼花：原牌面模糊 + ::after 伪元素叠一层万能牌外观（若影若现），不再额外插 DOM
