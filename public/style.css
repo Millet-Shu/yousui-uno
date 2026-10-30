@@ -267,7 +267,7 @@ input:focus { border-color: #6c7bff; }
   z-index: 11;
 }
 .hand-card.selected { transform: translateY(-10px); box-shadow: 0 0 15px rgba(255,255,255,0.5); z-index: 2; }
-.hand-card.grabbable { cursor: pointer; box-shadow: 0 0 10px 3px #ffd700; animation: grabPulse 0.8s infinite; transform: translateY(-6px); z-index: 2; }
+.hand-card.grabbable { cursor: default; box-shadow: 0 0 10px 3px #ffd700; animation: grabPulse 0.8s infinite; transform: translateY(-6px); z-index: 2; }
 @keyframes grabPulse { 50% { box-shadow: 0 0 18px 6px #ffd700; } }
 #game-spectators { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 8px; }
 #game-spectator-list { display: flex; flex-direction: column; gap: 8px; }

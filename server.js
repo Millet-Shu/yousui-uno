@@ -821,7 +821,8 @@ function openGrabWindow(room, playedBy) {
   const lastCard = room.topCard;
   const candidates = [];
   for (const p of room.players) {
-    if (p.finished) continue;
+    // 昏头的人这回合不能出牌，也不能抢牌
+    if (p.finished || isStunned(p)) continue;
     const idx = p.hand.findIndex(c =>
       c.color === lastCard.color && c.type === lastCard.type && c.value === lastCard.value
     );
@@ -1180,11 +1181,16 @@ function grabCard(room, playerId) {
   const grabberIdx = room.players.findIndex(p => p.id === playerId);
   const grabber = room.players[grabberIdx];
   if (!grabber || grabber.finished) return;
+  if (isStunned(grabber)) return;   // 昏头：这回合（含抢牌）都不能出牌
 
   // 校验那张牌仍在手上且与顶牌完全相同（防止状态变化后错抢）
   const card = grabber.hand[cand.cardIndex];
   const lastCard = room.grabAvailable.card;
   if (!card || card.color !== lastCard.color || card.type !== lastCard.type || card.value !== lastCard.value) return;
+
+  // 眼花：抢到的牌和正常出牌一样被看成万能牌（自己选颜色，原牌效果保留）；
+  // 顶着罚牌时按真实规则走，不能靠眼花逃掉 +2/+4
+  const asFakeWild = isDrunk(grabber) && room.pendingDraw === 0 && !isWild(card);
 
   addLog(room, `⚡ ${grabber.name} 抢出相同的牌 ${cardName(card)}！`);
 
@@ -1195,21 +1201,21 @@ function grabCard(room, playerId) {
   grabber.hand.splice(cand.cardIndex, 1);
   room.playPile.push(card);
   room.topCard = card;
-  room.topAsWild = false;   // 抢牌是正常出牌，顶牌恢复按牌面匹配
+  // 眼花抢到的牌同样当假万能牌：下家只按选定颜色匹配
+  room.topAsWild = asFakeWild;
   room.justDrew = false;
 
   // 抢牌也是"有人接着出牌"：上一张牌的举报/喊牌状态在这里统一结算
   settleUnoAfterPlay(room, grabber, myUnoCalled);
 
-  // 抢出 +2/+4：之前累加的罚牌数清零，之后重新按这张牌累加为 2 或 4
-  room.pendingDraw = 0;
-  room.pendingDrawType = null;
+  // 抢出 +2/+4 属于"提前打出这张牌"：已累加的罚牌不清零，由 handleCardEffect 继续往上叠
+  // （之前这里会把 pendingDraw 清成 0 再重算成本张的 2/4，导致叠牌失效）
 
   // 轮到抢牌者，由 handleCardEffect 从这里推进到抢牌者的下家
   room.currentIndex = grabberIdx;
 
-  // 重新处理牌效；万能牌让抢牌者自己选颜色（wildPending 流程）
-  handleCardEffect(room, grabber, card, null);
+  // 重新处理牌效；万能牌 / 眼花的假万能牌让抢牌者自己选颜色（wildPending 流程）
+  handleCardEffect(room, grabber, card, null, asFakeWild);
   // 抢到的是万能牌且抢牌者是 AI（含离线代理）时，需要立刻替它选色，否则会卡在选色
   if (room.wildPending && isAutoPlayer(room.players[room.currentIndex])) scheduleIfAuto(room, AI_DELAY_EXTRA);
 }
@@ -1965,8 +1971,8 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'playing' || room.paused) return;
     const me = room.players.find(p => p.id === currentPlayerId);
     const owner = isRoomOwner(room, socket.id, currentPlayerId);
-    // 只有房主（含在观战席上的房主）或当前该出牌的玩家能暂停
-    if (!owner && (!me || room.players[room.currentIndex]?.id !== currentPlayerId)) return;
+    // 所有在座的玩家都能暂停（不再限定当前回合的人）；房主在观战席上也能暂停
+    if (!owner && !me) return;
     room.paused = true;
     room.pausedBy = me ? me.name : '房主';
     room.pausedById = currentPlayerId;
@@ -1984,8 +1990,10 @@ io.on('connection', (socket) => {
   socket.on('resumeGame', () => {
     const room = currentRoom;
     if (!room || !room.paused) return;
-    // 只有暂停的人或房主可以恢复
-    if (room.pausedById !== currentPlayerId && !isRoomOwner(room, socket.id, currentPlayerId)) return;
+    // 暂停的人、房主、或任何在座玩家都能恢复：人人都能暂停，也得人人能恢复，
+    // 否则发起暂停的人掉线后全场会一直卡在暂停遮罩里
+    const me = room.players.find(p => p.id === currentPlayerId);
+    if (room.pausedById !== currentPlayerId && !me && !isRoomOwner(room, socket.id, currentPlayerId)) return;
     resetPause(room);
     room.aiTurnPending = false;
     room.aiTurnSeq = null;

@@ -1351,7 +1351,7 @@ function renderGame(state) {
   } else if (state.status === 'grabbing') {
     $('status-text').textContent = `抢"${unoWord()}"先手！点下面按钮！`;
   } else if (state.grabAvailable) {
-    $('status-text').textContent = `⚡ ${escapeHtml(state.grabAvailable.playedBy)} 刚打出 ${cardText(state.grabAvailable.card)}，你可以抢相同的牌！`;
+    $('status-text').textContent = `⚡ ${escapeHtml(state.grabAvailable.playedBy)} 刚打出 ${cardText(state.grabAvailable.card)}，点下方「抢相同的牌」按钮才抢（直接点手牌不算）`;
   } else if (state.wildPending && myTurn) {
     $('status-text').textContent = '请选择颜色';
   } else if (myTurn && myStunned) {
@@ -1447,8 +1447,8 @@ function renderGame(state) {
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing' || isSpectator);
   $('btn-restart').classList.toggle('hidden', !state.isOwner);
   $('btn-endgame').classList.toggle('hidden', !state.isOwner);
-  // 暂停只有房主或当前回合玩家能操作，其他人隐藏避免点了没反应
-  $('btn-pause').classList.toggle('hidden', !(state.isOwner || myTurn));
+  // 所有在座玩家（以及观战席上的房主）都能暂停
+  $('btn-pause').classList.toggle('hidden', !(state.isOwner || !!me));
 
   // 抢牌按钮：我可以抢牌时显示（服务器已按候选人过滤）
   $('btn-grab-card').classList.toggle('hidden', !state.grabAvailable);
@@ -1488,8 +1488,8 @@ function renderGame(state) {
     } else {
       pauseText.textContent = '游戏暂停';
     }
-    // 暂停发起者离开/被踢后，房主也能恢复，避免全场卡死
-    $('btn-resume').classList.toggle('hidden', !(state.isPausedByYou || state.isOwner));
+    // 暂停发起者、房主、以及任何在座玩家都能恢复（人人都能暂停，也得人人能恢复）
+    $('btn-resume').classList.toggle('hidden', !(state.isPausedByYou || state.isOwner || !!me));
     $('pause-by').textContent = `${escapeHtml(state.pausedBy || '')} 暂停了游戏`;
   } else {
     pauseOverlay.classList.add('hidden');
@@ -1602,8 +1602,10 @@ function renderGame(state) {
     }
 
     if (canGrabCard) {
+      // 只高亮、不绑定点击：抢牌只认下方「抢相同的牌」按钮。
+      // 直接点/双击手牌不会抢，这样想接着出 +2/+4 叠罚牌时点快了也不会误抢
       div.classList.add('grabbable');
-      div.onclick = () => socket.emit('grabCard');
+      div.title = '这张和刚打出的牌一样：要抢就点下方「⚡ 抢相同的牌」按钮；直接点手牌不会抢';
     } else if (playable) {
       // 万能牌 / +4 / 眼花时的任意牌 / 「黍」要先选颜色
       bindHandCardClick(div, originalIndex, card.type === 4 || card.type === 5 || fakeWild || (isSkill && card.value === 'shu'));
