@@ -1139,10 +1139,10 @@ function renderShop(state) {
   const isSpectator = !state.players.some(p => p.isYou);
   const me = state.players.find(p => p.isYou);
   const maxStreak = state.maxBuyStreak || 2;
-  const canAct = !isSpectator && canShopAct(state);
+  const canAct = canShopAct(state);
   // 连续买牌到上限：这回合商店只能看/刷新，不能买，必须自己出牌或摸牌
   const buyBlocked = canAct && !!(me && (me.buyStreak || 0) >= maxStreak);
-  const canBuy = !isSpectator && canBuyShop(state);
+  const canBuy = canBuyShop(state);
   if (!canBuy) { shopPick = null; shopPayIndex = null; }
 
   if (shopPick !== null) {
