@@ -338,8 +338,9 @@ function publicRoomState(room, selfPlayer) {
     maxBuyStreak: MAX_BUY_STREAK,   // 连续买牌上限：前端据此把商店灰掉并提示
     maxPlayers: room.maxPlayers,
     justDrew: !!room.justDrew,
-    // 房主身份按玩家 id 判定：socket 重连换了新 id 也不会丢失房主
-    isOwner: !!(selfPlayer && selfPlayer.id === room.ownerPlayerId),
+    // 房主身份按座位 id 判定：重连换了新 id 也不会丢房主；
+    // 用 selfId 而不是 selfPlayer，房主进观战席后仍然能开游戏 / 暂停 / 踢人 / 结束
+    isOwner: !!(selfId && selfId === room.ownerPlayerId),
     grabAvailable: (() => {
       if (!room.grabAvailable || !selfId) return null;
       const me = room.grabAvailable.candidates.find(c => c.playerId === selfId);
@@ -644,10 +645,7 @@ function useSkillCard(room, player, cardIndex, chosenColor = null) {
   settleUnoAfterPlay(room, player, myUnoCalled);
   checkWin(room);
   // 用岁牌把最后一张打光也算出完：这一手结束，轮到下一位（不然会停在一个没有牌的已出完玩家身上）
-  if (player.finished && room.status === 'playing') {
-    advance(room);
-    room.unoBadge = null;
-  }
+  ensureActiveTurn(room);
   broadcastRoom(room);
   if (room.status !== 'over') scheduleIfAuto(room, AI_DELAY_EXTRA);
   return true;
@@ -758,15 +756,17 @@ function handleCardEffect(room, player, card, chosenColor, asFakeWild = false) {
     applyCardBody(room, player, card, false);
   }
 
-  checkWin(room);
-  if (room.status === 'over') { broadcastRoom(room); return; }
-
   if (room.wildPending) {
-    // 等待选色：重新计一次时（选色也是这一手的一部分，不然后面可能一秒都不剩）
+    // 选色还没定：先不判输赢，等 resolveWildColor 结算完这手再说，
+    // 否则选色期间就把人标成"已出完"，会变成已出完的玩家还占着回合
     startTurnClock(room);
     broadcastRoom(room);
     return;
   }
+
+  checkWin(room);
+  if (room.status === 'over') { broadcastRoom(room); return; }
+  ensureActiveTurn(room);
 
   openGrabWindow(room, player);
 }
@@ -892,6 +892,7 @@ function resolveWildColor(room, playerId, color) {
 
   checkWin(room);
   if (room.status === 'over') { broadcastRoom(room); return; }
+  ensureActiveTurn(room);
 
   openGrabWindow(room, player);
 }
@@ -1365,6 +1366,16 @@ function checkWin(room) {
       addLog(room, `🏆 ${remaining[0].name} 第 ${remaining[0].rank} 名！`);
     }
   }
+}
+
+// 岁牌不换人：用它把最后一张打光后，currentIndex 还停在刚出完的人身上，
+// 这里推进到下一位还在局中的玩家，别让整桌人干等这个人超时
+function ensureActiveTurn(room) {
+  const cur = room.players[room.currentIndex];
+  if (room.status !== 'playing' || !cur || !cur.finished) return false;
+  advance(room);
+  room.unoBadge = null;
+  return true;
 }
 
 function colorName(c) {
