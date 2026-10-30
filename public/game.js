@@ -1087,6 +1087,8 @@ function matchesTop(card, state) {
   }
   if (card.color === 'none') return true;                      // 万能牌 / 加四
   if (card.color === state.currentColor) return true;
+  // 顶牌是眼花打出的假万能牌：只认选定的颜色，牌面上的数字/功能不再参与匹配
+  if (state.topAsWild) return false;
   const top = state.topCard;
   if (!top) return false;
   if (card.type === 0 && top.type === 0 && card.value === top.value) return true;

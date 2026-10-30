@@ -149,7 +149,7 @@ function refillShop(room) {
 
 function isWild(c) { return c.type === T.WILD || c.type === T.WILD_DRAW_FOUR; }
 
-function isPlayable(c, topCard, currentColor, pendingDraw, pendingDrawType) {
+function isPlayable(c, topCard, currentColor, pendingDraw, pendingDrawType, topAsWild) {
   // 有叠加罚牌时
   if (pendingDraw > 0 && pendingDrawType) {
     if (pendingDrawType === T.WILD_DRAW_FOUR) {
@@ -161,10 +161,13 @@ function isPlayable(c, topCard, currentColor, pendingDraw, pendingDrawType) {
   }
   if (isWild(c)) return true;
   if (c.color === currentColor) return true;
-  // 数字牌：同数字不同色也能出
-  if (c.type === T.NUMBER && topCard.type === T.NUMBER && c.value === topCard.value) return true;
-  // 动作牌：同类型不同色也能出
-  if (c.type === topCard.type && c.type !== T.NUMBER) return true;
+  // 顶牌是眼花打出的假万能牌：它是靠指定颜色打出去的，牌面上的数字/功能不再参与匹配
+  if (!topAsWild) {
+    // 数字牌：同数字不同色也能出
+    if (c.type === T.NUMBER && topCard.type === T.NUMBER && c.value === topCard.value) return true;
+    // 动作牌：同类型不同色也能出
+    if (c.type === topCard.type && c.type !== T.NUMBER) return true;
+  }
   return false;
 }
 
@@ -218,6 +221,7 @@ function createRoom(maxPlayers = 4) {
     playPile: [],      // 打牌堆：大家打出的牌（topCard 是它最上面那张）
     discardPile: [],   // 弃牌堆：商店付款等被弃掉的牌，不再混进打牌堆
     topCard: null,
+    topAsWild: false,            // 顶牌是眼花打出的假万能牌：只按指定颜色匹配，不再看牌面数字/功能
     currentColor: 'red',
     currentIndex: 0,
     direction: 1,
@@ -301,6 +305,7 @@ function publicRoomState(room, selfPlayer) {
       isCurrent: room.players[room.currentIndex] && room.players[room.currentIndex].id === p.id
     })),
     topCard: room.topCard,
+    topAsWild: !!room.topAsWild,
     currentColor: room.currentColor,
     yourHand: selfPlayer && selfPlayer.hand ? selfPlayer.hand : [],
     currentPlayerName: room.players[room.currentIndex] ? room.players[room.currentIndex].name : '',
@@ -408,6 +413,7 @@ function startGame(room) {
   room.playPile = [];
   room.discardPile = [];
   room.topCard = null;
+  room.topAsWild = false;
   room.shop = rules.shop ? buildShop(room) : null;   // 有岁模式：从牌堆抽 4 件商品上架
   room.shopRerollUsed = false;
 
@@ -488,6 +494,7 @@ function grabLead(room, playerId) {
 
   room.playPile.push(starter);
   room.topCard = starter;
+  room.topAsWild = false;
   // 连续抽到万能牌导致循环用尽 guard 时，起始牌仍是万能牌（color = none），必须随机给一个颜色，
   // 否则 currentColor 会是 'none'，之后谁都出不了牌、整个对局卡死
   room.currentColor = (isWild(starter) || isSkillCard(starter))
@@ -571,7 +578,7 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   // 眼花（醉酒）：手上的牌被看成万能牌，任何牌都能当万能牌打（要选色）；
   // 但顶着罚牌时仍按真实规则走，不能靠眼花逃掉 +2/+4
   const asFakeWild = isDrunk(player) && room.pendingDraw === 0 && !isWild(card);
-  if (!asFakeWild && !isPlayable(card, room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType)) return;
+  if (!asFakeWild && !isPlayable(card, room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType, room.topAsWild)) return;
 
   const myUnoCalled = !!room.unoCalled[player.id];
   closeGrabWindow(room);  // 有人已行动，抢牌窗口关闭，并作废旧回合的定时器
@@ -579,6 +586,7 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   player.hand.splice(cardIndex, 1);
   room.playPile.push(card);
   room.topCard = card;
+  room.topAsWild = asFakeWild;   // 假万能顶牌：下家只按指定颜色匹配
   room.justDrew = false;
 
   // 又有人出牌 → 上一张牌留下的举报窗口立即失效
@@ -862,7 +870,7 @@ function drawCard(room, playerId) {
   if (drawn.length > 0) {
     player.hand.push(drawn[0]);
     addLog(room, `${player.name} 摸了一张牌`);
-    if (isPlayable(drawn[0], room.topCard, room.currentColor, 0, null)) {
+    if (isPlayable(drawn[0], room.topCard, room.currentColor, 0, null, room.topAsWild)) {
       room.justDrew = true;
     } else {
       advance(room);
@@ -1112,6 +1120,7 @@ function grabCard(room, playerId) {
   grabber.hand.splice(cand.cardIndex, 1);
   room.playPile.push(card);
   room.topCard = card;
+  room.topAsWild = false;   // 抢牌是正常出牌，顶牌恢复按牌面匹配
   room.justDrew = false;
 
   // 抢牌也算"有人接着出牌"，上一张牌的举报窗口立即失效
@@ -1354,7 +1363,7 @@ function aiTurn(room) {
   const playable = [];
   for (let i = 0; i < player.hand.length; i++) {
     if (isSkillCard(player.hand[i])) continue;
-    if (isPlayable(player.hand[i], room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType)) playable.push(i);
+    if (isPlayable(player.hand[i], room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType, room.topAsWild)) playable.push(i);
   }
 
   // 岁牌不占回合，用完还能接着出牌：
@@ -1365,6 +1374,8 @@ function aiTurn(room) {
   if (skillIdx >= 0 && room.pendingDraw === 0
       && (player.hand.length === 1
         || (!isDrunk(player) && (playable.length === 0 || (player.hand.length >= 4 && Math.random() < 0.6))))) {
+    // 用岁牌后剩 1 张：和普通出牌一样，AI 有 75% 概率先喊有岁（写在 useSkillCard 之前才来得及结算）
+    if (player.hand.length === 2 && Math.random() < 0.75) room.unoCalled[player.id] = true;
     useSkillCard(room, player, skillIdx);
     return;
   }
@@ -1640,6 +1651,7 @@ io.on('connection', (socket) => {
     room.playPile = [];
     room.discardPile = [];
     room.topCard = null;
+    room.topAsWild = false;
     room.pendingDraw = 0;
     room.pendingDrawType = null;
     room.wildPending = false;
