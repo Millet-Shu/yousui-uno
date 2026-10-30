@@ -1132,6 +1132,7 @@ function renderShop(state) {
   panel.classList.toggle('hidden', !on);
   if (!on) {
     shopPick = null; shopPayIndex = null;
+    panel.classList.remove('locked', 'no-buy');
     $('btn-shop-buy').classList.add('hidden');
     const rb = $('btn-shop-reroll');
     rb.disabled = true;
@@ -1146,6 +1147,10 @@ function renderShop(state) {
   const buyBlocked = canAct && !!(me && (me.buyStreak || 0) >= maxStreak);
   const canBuy = canBuyShop(state);
   if (!canBuy) { shopPick = null; shopPayIndex = null; }
+  // 整块商店灰掉：不是自己回合 / 昏头 / 正在选色或处理罚牌
+  panel.classList.toggle('locked', !canAct);
+  // 连续买牌到上限：只灰商品，刷新还能用（刷新不过回合）
+  panel.classList.toggle('no-buy', canAct && buyBlocked);
 
   if (shopPick !== null) {
     const slot = shopSlotOf(shop, shopPick);
@@ -1206,14 +1211,20 @@ function renderShop(state) {
   const rerollBtn = $('btn-shop-reroll');
   const canReroll = canAct && !state.shopRerollUsed;
   rerollBtn.disabled = !canReroll;
-  rerollBtn.textContent = state.shopRerollUsed ? '已刷新' : '刷新';
+  rerollBtn.textContent = (canAct && state.shopRerollUsed) ? '已刷新' : '刷新';
   rerollBtn.title = canReroll
     ? '把 4 件商品全部换掉（旧货进弃牌堆），每回合一次'
-    : (state.shopRerollUsed ? '本回合已经刷新过了' : '轮到你时才能刷新');
+    : (!canAct ? '轮到你时才能刷新' : '本回合已经刷新过了');
 
   const hint = $('shop-hint');
-  if (me && me.stunned && me.isCurrent) {
-    hint.textContent = '昏头中：这回合只能点摸牌堆摸 1~3 张';
+  if (me && me.isCurrent && me.stunned) {
+    hint.textContent = state.pendingDraw > 0
+      ? `昏头中：先点摸牌堆收下 +${state.pendingDraw} 罚牌`
+      : '昏头中：这回合只能点摸牌堆摸 1~3 张';
+  } else if (me && me.isCurrent && state.wildPending) {
+    hint.textContent = '先选颜色';
+  } else if (me && me.isCurrent && state.pendingDraw > 0) {
+    hint.textContent = `先处理 +${state.pendingDraw} 罚牌`;
   } else if (buyBlocked) {
     hint.textContent = `已连续 ${me.buyStreak} 回合买牌，这回合必须自己出牌或摸牌`;
   } else if (!canAct) {
@@ -1527,11 +1538,12 @@ function renderGame(state) {
     // 昏头时什么牌都不能出，只能摸牌
     const myPlayTime = myTurn && !state.wildPending && state.status === 'playing' && !myStunned;
     const isSkill = card.type === 6;
-    // 眼花（令的第一段负面）：只有"不是万能牌"的牌才会被看成万能牌（真万能牌和 +4 保持原样）
-    const showWildGhost = !!myDrunk && !state.wildPending
+    // 眼花（令的第一段负面）：只有"不是万能牌"的牌才会被看成万能牌（真万能牌和 +4 保持原样）；
+    // 顶着罚牌时按真实规则走，所以这时也不叠假万能外观
+    const showWildGhost = !!myDrunk && !state.wildPending && state.pendingDraw === 0
       && card.type !== 4 && card.type !== 5 && !isSkill;
-    // 真能当万能牌打出去：自己回合 + 没昏头 + 没顶着罚牌（顶罚牌时按真实规则走）
-    const fakeWild = showWildGhost && myPlayTime && state.pendingDraw === 0;
+    // 真能当万能牌打出去：自己回合 + 没昏头（罚牌已在 showWildGhost 里排除）
+    const fakeWild = showWildGhost && myPlayTime;
     let playable = isSkill
       ? (myPlayTime && state.pendingDraw === 0)
       : (fakeWild || (myPlayTime && matchesTop(card, state)));

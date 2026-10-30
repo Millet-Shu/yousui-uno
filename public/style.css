@@ -457,6 +457,19 @@ input:focus { border-color: #6c7bff; }
    光条本身的样式与打牌堆的 .wild-ring 共用，见下方那一组 */
 .price-ring { position: absolute; inset: 1px; pointer-events: none; }
 .shop-hint { font-size: 10px; color: #9aa6c8; text-align: center; }
+/* 不能操作商店：整块灰掉（不是自己回合 / 昏头 / 选色或罚牌中） */
+.shop-panel.locked .shop-head,
+.shop-panel.locked .shop-items {
+  opacity: .4;
+  filter: grayscale(.85);
+  pointer-events: none;
+}
+/* 连续买牌到上限：只灰商品，刷新按钮还能点（刷新不过回合） */
+.shop-panel.no-buy .shop-items {
+  opacity: .45;
+  filter: grayscale(.85);
+  pointer-events: none;
+}
 
 #action-bar .btn-shop-buy {
   background: linear-gradient(135deg, #57d76e, #1f9c46);

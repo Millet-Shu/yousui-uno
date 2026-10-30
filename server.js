@@ -105,7 +105,7 @@ const MAX_BUY_STREAK = 2;
 const DRUNK_TURNS = 2;                     // 眼花 2 个回合：手上非万能的牌都看成万能牌（也能当万能牌打）
 const STUN_TURNS = 1;                      // 眼花走完之后昏头 1 个回合：不能出牌，只能摸牌
 const DIZZY_TURNS = DRUNK_TURNS + STUN_TURNS;
-const DRUNK_DRAW_WEIGHTS = [0.6, 0.3, 0.1]; // 昏头摸牌：摸 1 / 2 / 3 张的概率（张数越多越少见）
+const DRUNK_DRAW_WEIGHTS = [0.85, 0.13, 0.02]; // 昏头摸牌：摸 1 / 2 / 3 张的概率（绝大多数只摸 1 张）
 
 // 用一个倒计时表示「令」的负面：剩得多的那几回合是眼花，最后 STUN_TURNS 回合变成昏头
 function isStunned(p) { return !!p && p.dizzyTurns > 0 && p.dizzyTurns <= STUN_TURNS; }
@@ -649,13 +649,13 @@ function applyDecree(room, player) {
 // 结算一张牌"本身"的效果（不含万能牌选色）。
 // colorAlreadySet=true 表示这是眼花打出的假万能牌：颜色已经由玩家选好，牌面原色不能再覆盖它
 function applyCardBody(room, player, card, colorAlreadySet) {
+  // 真牌按牌面颜色结算；眼花打出的假万能牌颜色已由玩家选好，不能再被牌面原色覆盖
+  if (!colorAlreadySet) room.currentColor = card.color;
   switch (card.type) {
     case T.NUMBER:
-      if (!colorAlreadySet) room.currentColor = card.color;
       advance(room);
       break;
     case T.SKIP: {
-      if (!colorAlreadySet) room.currentColor = card.color;
       advance(room);
       // 先记录被跳过的人是第一次换人后的那位，再推进一次
       const skipped = room.players[room.currentIndex];
@@ -664,7 +664,6 @@ function applyCardBody(room, player, card, colorAlreadySet) {
       break;
     }
     case T.REVERSE: {
-      if (!colorAlreadySet) room.currentColor = card.color;
       room.direction *= -1;
       if (room.players.filter(p => !p.finished).length === 2) {
         // 官方规则：2 人局反转等同"跳过"，对手被跳过、出牌者再来一回合
@@ -679,7 +678,6 @@ function applyCardBody(room, player, card, colorAlreadySet) {
       break;
     }
     case T.DRAW_TWO:
-      if (!colorAlreadySet) room.currentColor = card.color;
       room.pendingDraw += 2;
       room.pendingDrawType = T.DRAW_TWO;
       advance(room);
@@ -747,6 +745,13 @@ function openGrabWindow(room, playedBy) {
 
   // 该模式不开放"抢相同的牌"时，直接结束本轮
   if (!rulesOf(room).grabExchange) {
+    broadcastRoom(room);
+    scheduleIfAuto(room);
+    return;
+  }
+
+  // 顶牌是眼花打出的假万能牌：它对外只算"选定的颜色"，没有完全相同的牌可抢
+  if (room.topAsWild) {
     broadcastRoom(room);
     scheduleIfAuto(room);
     return;
@@ -1095,6 +1100,7 @@ function advance(room, countTurn = true) {
 function grabCard(room, playerId) {
   if (room.status !== 'playing' || room.paused) return;
   if (!room.grabAvailable) return;
+  if (room.topAsWild) return;   // 假万能牌没有"相同牌"可抢（正常流程也不会开窗，这里兜底）
   const cand = room.grabAvailable.candidates.find(c => c.playerId === playerId);
   if (!cand) return;
 
