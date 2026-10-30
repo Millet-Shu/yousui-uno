@@ -1212,7 +1212,7 @@ function renderShop(state) {
     : (state.shopRerollUsed ? '本回合已经刷新过了' : '轮到你时才能刷新');
 
   const hint = $('shop-hint');
-  if (me && me.stunned) {
+  if (me && me.stunned && me.isCurrent) {
     hint.textContent = '昏头中：这回合只能点摸牌堆摸 1~3 张';
   } else if (buyBlocked) {
     hint.textContent = `已连续 ${me.buyStreak} 回合买牌，这回合必须自己出牌或摸牌`;
