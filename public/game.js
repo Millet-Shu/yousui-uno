@@ -1221,7 +1221,8 @@ function renderShop(state) {
   } else if (payCard) {
     hint.textContent = `已选 ${cardText(payCard)}，再点一件${COLOR_NAME[payCard.color] || ''}色商品`;
   } else {
-    hint.textContent = '先点商品，再点同色手牌';
+    const streakNote = me.buyStreak > 0 ? `（连续买牌 ${me.buyStreak}/${maxStreak}）` : '';
+    hint.textContent = `先点商品，再点同色手牌${streakNote}`;
   }
 }
 
