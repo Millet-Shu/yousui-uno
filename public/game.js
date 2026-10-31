@@ -80,6 +80,11 @@ function escapeHtml(str) {
   }[c]));
 }
 
+// 中间区按可用空间重新摆放。合并到一帧里做，避免 renderGame 的多个分支各调一次。
+function scheduleCenterFit() {
+  requestAnimationFrame(() => { if (window.fitCenterArea) window.fitCenterArea(); });
+}
+
 // ===== 首页按钮 =====
 $('btn-create').onclick = () => {
   const name = $('input-name').value.trim();
@@ -996,11 +1001,43 @@ const SEAT_RING_3 = [
 const SEAT_RING_4 = [
   { x: 85, y: 39 }, { x: 72, y: 12 }, { x: 28, y: 12 }, { x: 15, y: 39 },
 ];
-const SEAT_RING_8 = [
-  { x: 85, y: 65 }, { x: 85, y: 42 }, { x: 85, y: 19 },
-  { x: 50, y: 17 },
-  { x: 15, y: 19 }, { x: 15, y: 42 }, { x: 15, y: 65 },
+// 窄屏（601~900px）顶部有观战席横条，上排两张往下挪到 20%，横条收起后也不会压住
+const SEAT_RING_4_NARROW = [
+  { x: 85, y: 39 }, { x: 72, y: 20 }, { x: 28, y: 20 }, { x: 15, y: 39 },
 ];
+// 5 个以上对手（含观战 8 人局）：左右两列竖排。
+// 旧版把第 8 个座位放在底部中央，既压住手牌提示，又被 layout.js 当成顶部障碍，
+// 把整块中间区推到屏幕外。竖排两列不再占用上下方，也不会挡住中间牌堆。
+function columnSeats(count) {
+  const top = 12, bottom = 80;   // 上下留出房间号 / 底部手牌的安全边
+  const right = Math.ceil(count / 2);
+  const left = count - right;
+  const spread = (n, from, to) => {
+    if (n <= 1) return [50];
+    const out = [];
+    for (let i = 0; i < n; i++) out.push(from + (to - from) * i / (n - 1));
+    return out;
+  };
+  const positions = [];
+  // 右侧从下往上（靠近自己的下家在最下面），左侧从上往下，保持出牌顺序绕桌一圈
+  spread(right, bottom, top).forEach(y => positions.push({ x: 85, y }));
+  spread(left, top, bottom).forEach(y => positions.push({ x: 15, y }));
+  return positions;
+}
+
+// 手机窄屏：所有对手排成顶部两行，中间区整体落到他们下方。
+// 窄屏左右两列会和中间牌堆横向撞在一起，改成顶部排布最稳。
+function gridSeats(count) {
+  const rows = [count <= 2 ? count : count <= 4 ? 2 : count <= 6 ? 3 : 4];
+  const rest = count - rows[0];
+  if (rest > 0) rows.push(rest);
+  return rows.reduce((out, n, row) => {
+    for (let i = 0; i < n; i++) {
+      out.push({ x: (i + 1) * 100 / (n + 1), y: row === 0 ? 17 : 33 });
+    }
+    return out;
+  }, []);
+}
 
 function cardText(c) {
   if (c.type === 0) return String(c.value);
@@ -1306,15 +1343,20 @@ function renderGame(state) {
   const meIdx = Math.max(players.findIndex(p => p.isYou), 0);
 
   // 座位：以"我"为南位（底部），从我的下家开始沿出牌顺序逆时针排列
-  // 观战者没有自己的座位，按玩家总数选环（不再额外补南位，避免压住中间牌堆）
+  // 观战者没有自己的座位，按玩家总数排座
   const oppCount = isSpectator ? total : total - 1;
+  const gridMode = window.innerWidth <= 600; // 手机窄屏：对手排成顶部两行
   let seatPositions;
-  if (isSpectator && total >= 8) seatPositions = [...SEAT_RING_8, { x: 50, y: 88 }];
-  else if (oppCount >= 5) seatPositions = SEAT_RING_8;
-  else if (oppCount === 4) seatPositions = SEAT_RING_4;
+  if (gridMode) seatPositions = gridSeats(oppCount);
+  else if (oppCount >= 5) seatPositions = columnSeats(oppCount);
+  else if (oppCount === 4) seatPositions = window.innerWidth <= 900 ? SEAT_RING_4_NARROW : SEAT_RING_4;
   else if (oppCount === 3) seatPositions = SEAT_RING_3;
   else if (oppCount === 2) seatPositions = SEAT_RING_2;
   else seatPositions = SEAT_RING_1;
+
+  // 8/7 人挤在一张桌子上时收起左侧日志，避免压在左下角对手面板上。
+  // 日志只在 5 人以下的小桌保留。
+  $('game-board').classList.toggle('crowded', oppCount >= 5);
 
   // 按出牌顺序（direction=1 时沿数组递增，视觉逆时针）从我的下家开始排座
   // 观战者没有"我"，从第一个玩家开始把所有人排满
@@ -1326,13 +1368,12 @@ function renderGame(state) {
     if (p && !p.isYou) ordered.push(p);
   }
 
-  const narrow = window.innerWidth <= 900;  // 窄屏顶部有观战席横条，座位需要让位
   ordered.forEach((p, i) => {
     const pos = seatPositions[i % seatPositions.length];
     const div = document.createElement('div');
-    div.className = 'opponent ' + (p.isCurrent ? ' current' : '');
+    div.className = 'opponent ' + (p.isCurrent ? 'current' : '') + (gridMode ? ' seat-grid' : '');
     div.style.left = pos.x + '%';
-    div.style.top = (narrow ? Math.max(pos.y, 30) : pos.y) + '%';
+    div.style.top = pos.y + '%';
     div.style.transform = 'translate(-50%, -50%)';
     const penalty = (p.isCurrent && state.pendingDraw > 0) ? `<div class="penalty">+${state.pendingDraw}</div>` : '';
     const rankLabel = p.finished ? `<div class="rank">第 ${p.rank} 名</div>` : '';
@@ -1347,9 +1388,8 @@ function renderGame(state) {
       : '';
     let cardsHtml = '';
     // 最多显示 11 张牌背，叠放间距由 CSS 控制（居中、不撑出面板）
-    // 只有超过 11 张（数不清了）才在最上面那张牌背写总数；没超过就数牌背，
-    // 想精确看数量再开"显示手牌数"开关
-    const maxStack = 11;
+    // 手机顶部排座时列宽只有 70px 左右，少叠几张，超过数量直接用总数标注
+    const maxStack = gridMode ? 7 : 11;
     const shown = Math.min(p.handCount, maxStack);
     const backCls = isOfficialUI() ? 'opp-card-back official' : 'opp-card-back';
     for (let j = 0; j < shown; j++) {
@@ -1458,7 +1498,7 @@ function renderGame(state) {
       spectators.forEach(s => {
         const div = document.createElement('div');
         div.className = 'game-spectator-avatar';
-        div.textContent = escapeHtml(s.name)[0];  // ✅ 防 XSS
+        div.textContent = escapeHtml(s.name).charAt(0);
         div.title = escapeHtml(s.name) + (s.isOwner ? '（房主）' : '');
         gameSpList.appendChild(div);
       });
@@ -1466,7 +1506,7 @@ function renderGame(state) {
   }
 
   // 颜色弹窗：只有"服务端要求选色"或"本地已点开万能牌"时才显示，否则自动关闭
-  const needColor = !!myTurn && (state.wildPending || window._pendingCardIndex !== undefined);
+  const needColor = !!myTurn && !state.paused && (state.wildPending || window._pendingCardIndex !== undefined);
   $('color-modal').classList.toggle('hidden', !needColor);
   // 本地还没出牌时可以点 × 反悔；服务端已经收下这张万能牌（wildPending）时必须选色，不给取消
   $('color-cancel').classList.toggle('hidden', !!state.wildPending);
@@ -1569,6 +1609,7 @@ function renderGame(state) {
   // 观战者看不到手牌内容，只显示所有人的牌背
   if (isSpectator) {
     handEl.innerHTML = '<div class="spectator-tip">观战中 · 已显示所有玩家的牌背</div>';
+    scheduleCenterFit();
     return;
   }
 
@@ -1698,7 +1739,7 @@ function renderGame(state) {
   });
 
   // 中间区（商店 + 三个牌堆）按实际可用空间摆放，避开对手面板和底部控件
-  requestAnimationFrame(() => { if (window.fitCenterArea) window.fitCenterArea(); });
+  scheduleCenterFit();
 }
 
 // 颜色选择（排除「夕」弹窗里的颜色按钮，它们只记录颜色、不提交）

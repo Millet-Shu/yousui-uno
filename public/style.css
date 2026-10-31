@@ -332,6 +332,14 @@ input:focus { border-color: #6c7bff; }
 #draw-pile { position: relative; transition: transform .15s; }
 #draw-pile:hover { transform: scale(1.05); }
 .opponent .report-btn { display: block; margin: 4px auto 0; padding: 4px 12px; background: linear-gradient(135deg, #f2685f, #c62a2a); color: #fff; border: none; border-radius: 10px; font-size: 12px; cursor: pointer; animation: blink 1s infinite; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+/* 手机顶部两行排座：一行最多 4 个，面板必须窄于列间距，避免左右叠在一起 */
+.opponent.seat-grid { max-width: calc(20vw - 8px); padding: 3px 4px; }
+.opponent.seat-grid .name { font-size: 10px; }
+.opponent.seat-grid .opp-hand { margin: 4px 0; }
+.opponent.seat-grid .hand-count { font-size: 10px; }
+.opponent.seat-grid .drunk-badge,
+.opponent.seat-grid .penalty,
+.opponent.seat-grid .rank { font-size: 9px; padding: 1px 5px; margin-top: 2px; }
 @keyframes blink { 50% { opacity: 0.6; } }
 
 #center-area {
@@ -619,6 +627,8 @@ input:focus { border-color: #6c7bff; }
   color: #aaa;
   z-index: 9;
 }
+/* 5 人以上：两侧竖排座位会占满左下角，日志再放这里会压在对手面板上，直接收起 */
+#game-board.crowded #game-log { display: none; }
 
 /* 「令」的负面状态：贴在手牌正上方的一枚小标签（眼花 / 昏头） */
 .hand-debuff {
@@ -906,6 +916,9 @@ input:focus { border-color: #6c7bff; }
 
 /* 窄屏/手机：观战席移到左上角横排（放在房间号下方），避免被西侧对手的卡牌挡住 */
 @media (max-width: 900px) {
+  /* 5 人以上时顶部两行座位会占到左上角，观战席横条和模式角标直接收起 */
+  #game-board.crowded #game-spectators,
+  #game-board.crowded #game-mode-chip { display: none; }
   #game-room-code { font-size: 14px; padding: 4px 12px; top: 10px; }
   /* 自己的名字往上抬一点，别贴着屏幕最底下（手牌下方仍有 30px 以上空隙） */
   .game-my-name { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); font-size: 11px; padding: 2px 10px; }

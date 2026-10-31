@@ -739,6 +739,15 @@ function settleUnoAfterPlay(room, player, myUnoCalled) {
   }
 }
 
+// 岁牌不占回合：结算完统一收尾（喊牌/举报 → 判赢 → 跳过出完的人 → 广播 → 安排 AI）
+function finishSkillPlay(room, player, myUnoCalled) {
+  settleUnoAfterPlay(room, player, myUnoCalled);
+  checkWin(room);
+  ensureActiveTurn(room);
+  broadcastRoom(room);
+  if (room.status !== 'over') scheduleIfAuto(room, AI_DELAY_EXTRA);
+}
+
 // ===== 岁牌使用：不换人、不占回合，牌回弃牌堆 =====
 // 岁牌每回合限一张：打完令/黍后本回合不能再打第二张（下回合 advance 时重置）
 function useSkillCard(room, player, cardIndex, chosenColor = null) {
@@ -758,19 +767,14 @@ function useSkillCard(room, player, cardIndex, chosenColor = null) {
   closeGrabWindow(room);              // 有人已行动，抢牌窗口关闭
   player.hand.splice(cardIndex, 1);
   room.discardPile.push(card);        // 技能牌不压顶牌、不改当前颜色
-  room.justDrew = false;
+  // 岁牌不占回合：不动 justDrew，避免"摸一张 → 用岁牌 → 再摸一张"
   addLog(room, `${player.name} 打出 ${cardName(card)}`);
 
   if (card.value === 'decree') applyDecree(room, player);
   else if (card.value === 'shu') applyShu(room, player, chosenColor);
 
   // 岁牌可能把最后一张打光（黍还会改变手牌数），所以喊牌/举报放在效果结算之后
-  settleUnoAfterPlay(room, player, myUnoCalled);
-  checkWin(room);
-  // 用岁牌把最后一张打光也算出完：这一手结束，轮到下一位（不然会停在一个没有牌的已出完玩家身上）
-  ensureActiveTurn(room);
-  broadcastRoom(room);
-  if (room.status !== 'over') scheduleIfAuto(room, AI_DELAY_EXTRA);
+  finishSkillPlay(room, player, myUnoCalled);
   return true;
 }
 
@@ -923,7 +927,7 @@ function useXiCard(room, player, cardIndex, xi) {
   room.skillUsedThisTurn = true;
   closeGrabWindow(room);              // 有人已行动，抢牌窗口关闭
   player.hand.splice(cardIndex, 1);
-  room.justDrew = false;
+  // 夕变岁牌不占回合：不动 justDrew，避免"摸一张 → 用夕 → 再摸一张"
 
   // 变普通牌：照常压顶、结算效果、按效果换人（可以是任意牌，不要求与顶牌匹配）
   if (madeCard) {
@@ -945,11 +949,7 @@ function useXiCard(room, player, cardIndex, xi) {
   if (xi.value === 'decree') applyXiDecree(room, player);
   else applyXiShu(room, player, xi.color, xi.targetId);
 
-  settleUnoAfterPlay(room, player, myUnoCalled);
-  checkWin(room);
-  ensureActiveTurn(room);
-  broadcastRoom(room);
-  if (room.status !== 'over') scheduleIfAuto(room, AI_DELAY_EXTRA);
+  finishSkillPlay(room, player, myUnoCalled);
   return true;
 }
 
@@ -1156,6 +1156,7 @@ function openGrabWindow(room, playedBy) {
 
 function resolveWildColor(room, playerId, color) {
   if (!room.wildPending) return;  // 没有待选色状态，忽略乱点
+  if (room.paused) return;        // 暂停期间不接受选色，恢复后再选
   const player = room.players[room.currentIndex];
   if (!player || player.id !== playerId) return;
   if (!['red', 'yellow', 'green', 'blue'].includes(color)) return;  // 非法颜色直接丢弃
@@ -1666,7 +1667,7 @@ function ensureActiveTurn(room) {
 }
 
 function colorName(c) {
-  return { red: '红', yellow: '黄', green: '绿', blue: '蓝' }[c] || c;
+  return COLOR_CN[c] || c;
 }
 
 // ✅ 统一调度 AI 回合：turnSeq 作废旧回合的定时器，避免新回合里重复执行 aiTurn
@@ -1688,12 +1689,18 @@ function scheduleAiTurn(room, delay = AI_DELAY) {
 
 // ==================== AI ====================
 
-// 选万能牌/假万能牌的颜色：挑手上张数最多的颜色
-function bestHandColor(player) {
+// 统计手上的四色张数（AI 选色/挑「夕」「黍」共用）
+function countHandColors(player) {
   const counts = {};
   for (const c of player.hand) {
-    if (c.color && c.color !== 'none') counts[c.color] = (counts[c.color] || 0) + 1;
+    if (COLORS.includes(c.color)) counts[c.color] = (counts[c.color] || 0) + 1;
   }
+  return counts;
+}
+
+// 选万能牌/假万能牌的颜色：挑手上张数最多的颜色
+function bestHandColor(player) {
+  const counts = countHandColors(player);
   let best = 'red';
   for (const c in counts) if (counts[c] > (counts[best] || 0)) best = c;
   return best;
@@ -1704,10 +1711,7 @@ function bestHandColor(player) {
 // 只剩夕 → 变万能直接出完；没牌可出 → 变 +4 罚下家；否则留着夕不用
 function aiPickXi(room, player) {
   const others = room.players.filter(p => p !== player && !p.finished);
-  const counts = {};
-  for (const c of player.hand) {
-    if (COLORS.includes(c.color)) counts[c.color] = (counts[c.color] || 0) + 1;
-  }
+  const counts = countHandColors(player);
   let color = null;
   for (const c of COLORS) if ((counts[c] || 0) >= 4 && (!color || counts[c] > counts[color])) color = c;
   if (color && others.length > 0) {
@@ -1731,10 +1735,7 @@ function aiPickXi(room, player) {
 function aiPickSkill(room, player) {
   const shuIndex = player.hand.findIndex(c => isSkillCard(c) && c.value === 'shu');
   if (shuIndex >= 0) {
-    const counts = {};
-    for (const c of player.hand) {
-      if (COLORS.includes(c.color)) counts[c.color] = (counts[c.color] || 0) + 1;
-    }
+    const counts = countHandColors(player);
     let color = null;
     for (const c of COLORS) if ((counts[c] || 0) >= 3 && (!color || counts[c] > counts[color])) color = c;
     if (color) return { index: shuIndex, color };
