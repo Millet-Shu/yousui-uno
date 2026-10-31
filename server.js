@@ -44,6 +44,7 @@ function createDeck() {
 const SKILL_CARDS = [
   { key: 'decree', label: '令', copies: 2 },
   { key: 'shu', label: '黍', copies: 2 },
+  { key: 'xi', label: '夕', copies: 2 },   // 夕：变成任意牌（复制岁牌时效果弱化）
 ];
 
 function createSkillDeck() {
@@ -491,19 +492,31 @@ function drawCards(room, n) {
   return out;
 }
 
+// 夕变出来的牌洗回牌堆时恢复成普通牌：变数字/功能牌的去 xi 标记；
+// 变出来的岁牌只是展示用的"分身"，洗回时还原成一张「夕」，避免凭空多出完整令/黍
+function clearXiMark(card) {
+  if (!card || !card.xi) return card;
+  if (card.type === T.SKILL) {
+    return { color: 'none', type: T.SKILL, value: 'xi', label: '夕' };
+  }
+  const copy = Object.assign({}, card);
+  delete copy.xi;
+  return copy;
+}
+
 // 牌堆摸空了怎么补：
 // 1) 先把弃牌堆（商店付掉的牌等）整堆洗回牌堆
 // 2) 还不够，就把打牌堆除最上面那张外的牌洗回牌堆（顶牌必须留在场上）
 function reshuffleIntoDraw(room) {
   if (room.discardPile.length > 0) {
-    room.drawPile = shuffle(room.drawPile.concat(room.discardPile));
+    room.drawPile = shuffle(room.drawPile.concat(room.discardPile.map(clearXiMark)));
     room.discardPile = [];
     addLog(room, '弃牌堆洗回牌堆');
   }
   if (room.drawPile.length > 0) return;
   if (room.playPile.length > 1) {
     const top = room.playPile.pop();
-    room.drawPile = shuffle(room.playPile);
+    room.drawPile = shuffle(room.playPile.map(clearXiMark));
     room.playPile = [top];
     addLog(room, '打牌堆除顶牌外洗回牌堆');
   }
@@ -659,7 +672,7 @@ function scheduleGrabLeadFallback(room) {
   }, 800);
 }
 
-function playCard(room, playerId, cardIndex, chosenColor = null) {
+function playCard(room, playerId, cardIndex, chosenColor = null, xi = null) {
   if (room.status !== 'playing' || room.paused) return;
   const player = room.players[room.currentIndex];
   if (!player || player.id !== playerId) return;
@@ -680,6 +693,8 @@ function playCard(room, playerId, cardIndex, chosenColor = null) {
   // 岁牌：技能牌，用完回弃牌堆、不换人，只能在自己回合用（顶着罚牌时先处理罚牌）
   if (isSkillCard(card)) {
     if (room.pendingDraw > 0) return false;
+    // 「夕」要先把"变成哪张牌"的选项一起传上来
+    if (card.value === 'xi') return useXiCard(room, player, cardIndex, xi);
     return useSkillCard(room, player, cardIndex, chosenColor);
   }
 
@@ -858,6 +873,110 @@ function applyShu(room, player, color) {
   addLog(room, `${player.name} 的「黍」声明${COLOR_CN[color]}色：${pool.length} 张牌分给 ${detail}`);
 }
 
+// ===== 岁牌·夕：变成任意牌 =====
+// 变出来的牌带 xi 标记（前端据此画墨绿边框，说明是夕变的）。
+// 变数字/功能牌会照常结算并结束回合；变令/黍不占回合，但效果弱化：
+//   令：只给 2 回合眼花，不生成酒；
+//   黍：只把声明颜色的一半给指定的一个玩家（奇数时多出 1 张也给目标）。
+const XI_CARD_TYPES = [T.NUMBER, T.SKIP, T.REVERSE, T.DRAW_TWO, T.WILD, T.WILD_DRAW_FOUR];
+
+function useXiCard(room, player, cardIndex, xi) {
+  const card = player.hand[cardIndex];
+  if (!isSkillCard(card) || card.value !== 'xi') return false;
+  if (room.status !== 'playing' || room.paused || room.wildPending) return false;
+  if (isStunned(player)) return false;
+  if (room.skillUsedThisTurn) return false;
+  if (room.pendingDraw > 0) return false;
+  if (!xi || typeof xi !== 'object') return 'xiChoiceRequired';
+
+  // 先校验选项，合法才消耗「夕」，选错了牌还在手里
+  let madeCard = null;
+  let wildColor = null;
+  if (xi.kind === 'card') {
+    const type = Number(xi.type);
+    if (!XI_CARD_TYPES.includes(type)) return 'xiBadChoice';
+    if (type === T.NUMBER) {
+      const v = Number(xi.value);
+      if (!Number.isInteger(v) || v < 0 || v > 9) return 'xiBadChoice';
+      if (!COLORS.includes(xi.color)) return 'xiBadChoice';
+      madeCard = { color: xi.color, type, value: v, xi: true };
+    } else if (type === T.WILD || type === T.WILD_DRAW_FOUR) {
+      if (!COLORS.includes(xi.color)) return 'xiBadChoice';
+      madeCard = { color: 'none', type, xi: true };
+      wildColor = xi.color;   // 万能/+4：选的颜色就是打出去要声明的颜色
+    } else {
+      if (!COLORS.includes(xi.color)) return 'xiBadChoice';
+      madeCard = { color: xi.color, type, xi: true };
+    }
+  } else if (xi.kind === 'skill') {
+    if (xi.value !== 'decree' && xi.value !== 'shu') return 'xiBadChoice';
+    if (xi.value === 'shu') {
+      if (!COLORS.includes(xi.color)) return 'xiBadChoice';
+      if (!player.hand.some(c => c.color === xi.color)) return 'xiNoColorCards';
+      if (!room.players.some(p => p.id === xi.targetId && p !== player && !p.finished)) return 'xiNoTarget';
+    }
+  } else {
+    return 'xiBadChoice';
+  }
+
+  const myUnoCalled = !!room.unoCalled[player.id];
+  room.skillUsedThisTurn = true;
+  closeGrabWindow(room);              // 有人已行动，抢牌窗口关闭
+  player.hand.splice(cardIndex, 1);
+  room.justDrew = false;
+
+  // 变普通牌：照常压顶、结算效果、按效果换人（可以是任意牌，不要求与顶牌匹配）
+  if (madeCard) {
+    room.playPile.push(madeCard);
+    room.topCard = madeCard;
+    room.topAsWild = false;
+    settleUnoAfterPlay(room, player, myUnoCalled);
+    handleCardEffect(room, player, madeCard, wildColor, false);
+    return true;
+  }
+
+  // 变岁牌：不换人、不占回合，只结算弱化版；弃牌堆里放一张带 xi 标记的岁牌做展示
+  const madeSkill = {
+    color: 'none', type: T.SKILL, value: xi.value,
+    label: xi.value === 'decree' ? '令' : '黍', xi: true
+  };
+  room.discardPile.push(madeSkill);
+  addLog(room, `${player.name} 的「夕」变成「${madeSkill.label}」（弱化）`);
+  if (xi.value === 'decree') applyXiDecree(room, player);
+  else applyXiShu(room, player, xi.color, xi.targetId);
+
+  settleUnoAfterPlay(room, player, myUnoCalled);
+  checkWin(room);
+  ensureActiveTurn(room);
+  broadcastRoom(room);
+  if (room.status !== 'over') scheduleIfAuto(room, AI_DELAY_EXTRA);
+  return true;
+}
+
+// 夕·令：只有令一开始的 2 回合眼花，不生成酒，也不开启喝酒上头的窗口
+function applyXiDecree(room, player) {
+  player.drunkTurns = Math.max(player.drunkTurns || 0, DRUNK_TURNS);
+  addLog(room, `${player.name} 中了弱化「令」：眼花 ${DRUNK_TURNS} 回合，不会生成「酒」`);
+}
+
+// 夕·黍：把声明颜色的一半牌洗乱后给指定的一个玩家；奇数时多出的 1 张也给目标
+function applyXiShu(room, player, color, targetId) {
+  if (!COLORS.includes(color)) return false;
+  const target = room.players.find(p => p.id === targetId && p !== player && !p.finished);
+  if (!target) return false;
+  const given = player.hand.filter(c => c.color === color);
+  if (given.length === 0) return false;
+
+  const pool = shuffle(given.slice());
+  const count = Math.ceil(pool.length / 2);
+  player.hand = player.hand.filter(c => c.color !== color);
+  target.hand.push(...pool.slice(0, count));
+  player.hand.push(...pool.slice(count));
+  addLog(room, `${player.name} 的弱化「黍」：${COLOR_CN[color]}色 ${given.length} 张，${count} 张给 ${target.name}，自己留 ${given.length - count} 张`);
+  return true;
+}
+
+
 // 结算一张牌"本身"的效果（不含万能牌选色）。
 // colorAlreadySet=true 表示这是眼花打出的假万能牌：颜色已经由玩家选好，牌面原色不能再覆盖它
 function applyCardBody(room, player, card, colorAlreadySet) {
@@ -898,7 +1017,7 @@ function applyCardBody(room, player, card, colorAlreadySet) {
 }
 
 function handleCardEffect(room, player, card, chosenColor, asFakeWild = false) {
-  addLog(room, `${player.name} 打出 ${cardName(card)}${asFakeWild ? '（眼花，当万能牌用）' : ''}`);
+  addLog(room, `${player.name} 打出 ${cardName(card)}${card.xi ? '（夕牌变身）' : ''}${asFakeWild ? '（眼花，当万能牌用）' : ''}`);
 
   if (asFakeWild) {
     // 眼花：牌还是原来那张（顶牌照旧），颜色由自己选；选完色后再照常结算原牌效果（反转 / +2 都保留）
@@ -1580,9 +1699,36 @@ function bestHandColor(player) {
   return best;
 }
 
+// AI 挑「夕」要变成什么：
+// 同色 ≥4 张 → 变黍，把一半牌甩给手牌最多的玩家；
+// 只剩夕 → 变万能直接出完；没牌可出 → 变 +4 罚下家；否则留着夕不用
+function aiPickXi(room, player) {
+  const others = room.players.filter(p => p !== player && !p.finished);
+  const counts = {};
+  for (const c of player.hand) {
+    if (COLORS.includes(c.color)) counts[c.color] = (counts[c.color] || 0) + 1;
+  }
+  let color = null;
+  for (const c of COLORS) if ((counts[c] || 0) >= 4 && (!color || counts[c] > counts[color])) color = c;
+  if (color && others.length > 0) {
+    let target = others[0];
+    for (const p of others) if (p.hand.length > target.hand.length) target = p;
+    return { kind: 'skill', value: 'shu', color, targetId: target.id };
+  }
+  if (player.hand.length === 1) {
+    return { kind: 'card', type: T.WILD, color: bestHandColor(player) };
+  }
+  const hasPlayable = player.hand.some(c => !isSkillCard(c) && !isWineCard(c)
+    && isPlayable(c, room.topCard, room.currentColor, room.pendingDraw, room.pendingDrawType, room.topAsWild));
+  if (!hasPlayable) {
+    return { kind: 'card', type: T.WILD_DRAW_FOUR, color: bestHandColor(player) };
+  }
+  return null;
+}
+
 // AI 挑一张岁牌：手上有同色牌 ≥3 张时优先用「黍」（把一堆同色牌甩给手牌最少的人），
-// 否则用「令」把负面状态丢出去；两张都没有则返回 null
-function aiPickSkill(player) {
+// 否则用「夕」解围，再用「令」把负面状态丢出去；都没有则返回 null
+function aiPickSkill(room, player) {
   const shuIndex = player.hand.findIndex(c => isSkillCard(c) && c.value === 'shu');
   if (shuIndex >= 0) {
     const counts = {};
@@ -1592,6 +1738,11 @@ function aiPickSkill(player) {
     let color = null;
     for (const c of COLORS) if ((counts[c] || 0) >= 3 && (!color || counts[c] > counts[color])) color = c;
     if (color) return { index: shuIndex, color };
+  }
+  const xiIndex = player.hand.findIndex(c => isSkillCard(c) && c.value === 'xi');
+  if (xiIndex >= 0) {
+    const xi = aiPickXi(room, player);
+    if (xi) return { index: xiIndex, color: xi.kind === 'skill' ? xi.color : null, xi };
   }
   const decreeIndex = player.hand.findIndex(c => isSkillCard(c) && c.value === 'decree');
   return decreeIndex >= 0 ? { index: decreeIndex, color: null } : null;
@@ -1634,13 +1785,14 @@ function aiTurn(room) {
   // 手牌多 → 有一定概率提前用，别留在手里卡到最后。
   // 已经眼花时不再重复打（只会刷新负面倒计时，纯浪费），除非这是最后一张。
   // 每回合限一张岁牌：本回合已经用过就不再考虑
-  const skillChoice = room.skillUsedThisTurn ? null : aiPickSkill(player);
+  const skillChoice = room.skillUsedThisTurn ? null : aiPickSkill(room, player);
   if (skillChoice && room.pendingDraw === 0
       && (player.hand.length === 1
         || (!isDrunk(player) && (playable.length === 0 || (player.hand.length >= 4 && Math.random() < 0.6))))) {
     // 用岁牌后剩 1 张：和普通出牌一样，AI 有 75% 概率先喊有岁（写在 useSkillCard 之前才来得及结算）
     if (player.hand.length === 2 && Math.random() < 0.75) room.unoCalled[player.id] = true;
-    useSkillCard(room, player, skillChoice.index, skillChoice.color);
+    if (skillChoice.xi) useXiCard(room, player, skillChoice.index, skillChoice.xi);
+    else useSkillCard(room, player, skillChoice.index, skillChoice.color);
     return;
   }
 
@@ -2226,11 +2378,15 @@ io.on('connection', (socket) => {
     currentPlayerId = null;
   });
 
-  socket.on('playCard', ({ cardIndex, chosenColor }) => {
+  socket.on('playCard', ({ cardIndex, chosenColor, xi }) => {
     if (!currentRoom) return;
     // 「黍」选了手上没有的颜色：牌不消耗，提示换色（useSkillCard 返回这个标记）
-    const result = playCard(currentRoom, currentPlayerId, cardIndex, chosenColor);
+    const result = playCard(currentRoom, currentPlayerId, cardIndex, chosenColor, xi);
     if (result === 'noColorCards') socket.emit('errorMsg', '你手上没有这个颜色的牌，换一个颜色再打「黍」');
+    else if (result === 'xiChoiceRequired') socket.emit('errorMsg', '先选「夕」要变成哪张牌');
+    else if (result === 'xiBadChoice') socket.emit('errorMsg', '「夕」没选好要变成的牌，请重新选');
+    else if (result === 'xiNoColorCards') socket.emit('errorMsg', '你手上没有这个颜色的牌，换一个颜色再变「黍」');
+    else if (result === 'xiNoTarget') socket.emit('errorMsg', '「夕·黍」要选一个有牌可分的其他玩家');
   });
 
   socket.on('grabCard', () => {

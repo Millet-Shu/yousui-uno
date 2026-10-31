@@ -30,6 +30,10 @@ let handScrollLeft = 0;
 // 有岁商店：当前选中的商品格子（null = 没选）与付款手牌
 let shopPick = null;
 let shopPayIndex = null;
+// 「夕」变身弹窗：选中的夕牌索引 / 声明的颜色 / 黍的目标玩家
+let xiCardIndex = null;
+let xiColor = null;
+let xiTargetId = null;
 const COLOR_NAME = { red: '红', yellow: '黄', green: '绿', blue: '蓝' };
 (() => {
   const el = $('hand-area');
@@ -1065,7 +1069,7 @@ function paintTopCard(el, card) {
     return;
   }
   const cls = card.type === 6 ? 'skill' : (card.type === 7 ? 'item' : (card.color === 'none' ? 'wild' : card.color));
-  el.className = 'card ' + cls + (official ? ' official' : '');
+  el.className = 'card ' + cls + (card.xi ? ' xi' : '') + (official ? ' official' : '');
   // 万能牌颜色用边框上的彩色流动条表示（#top-card-wrap .wild-ring），不靠 box-shadow
   if (official) { el.innerHTML = faceHtml(card); return; }
   // 有岁版：用 .card-face 包裹数字，后续换图片时数字浮在上层
@@ -1108,6 +1112,18 @@ function bindHandCardClick(div, cardIndex, needColor) {
     } else {
       socket.emit('playCard', { cardIndex });
     }
+  };
+}
+
+// 「夕」手牌点击：第一次点选中，再点一次弹"变成哪张牌"的选择窗
+function bindXiCardClick(div, cardIndex) {
+  div.onclick = () => {
+    if (!div.classList.contains('selected')) {
+      document.querySelectorAll('.hand-card.selected').forEach(d => d.classList.remove('selected'));
+      div.classList.add('selected');
+      return;
+    }
+    openXiModal(cardIndex);
   };
 }
 
@@ -1456,6 +1472,17 @@ function renderGame(state) {
   $('color-cancel').classList.toggle('hidden', !!state.wildPending);
   if (!needColor) window._pendingCardIndex = undefined;
 
+  // 「夕」变身弹窗：轮次/状态一变就自动收起，避免留在别人的回合里
+  if (xiCardIndex !== null) {
+    const xiMe = findMe(state);
+    const xiHand = Array.isArray(state.yourHand) ? state.yourHand : [];
+    const xiCard = xiHand[xiCardIndex];
+    const xiStillMine = !!xiMe && xiMe.isCurrent && state.status === 'playing' && !state.paused
+      && !state.wildPending && !(state.pendingDraw > 0) && !state.skillUsedThisTurn && !xiMe.stunned;
+    if (!xiStillMine || !xiCard || xiCard.type !== 6 || xiCard.value !== 'xi') closeXiModal();
+    else renderXiModal();
+  }
+
   $('btn-grab').classList.toggle('hidden', state.status !== 'grabbing' || isSpectator);
   $('btn-restart').classList.toggle('hidden', !state.isOwner);
   $('btn-endgame').classList.toggle('hidden', !state.isOwner);
@@ -1592,10 +1619,11 @@ function renderGame(state) {
     if (showWildGhost) div.classList.add('fake-wild');
     if (myStunned) div.title = '昏头中：这回合出不了牌，点摸牌堆随机摸 1~3 张';
     else if (isSkill && skillSpent) div.title = '岁牌每回合限用一张，这回合已经用过了';
+    else if (isSkill && state.pendingDraw > 0) div.title = '先处理完罚牌（+2 / +4）再用岁牌';
     else if (isSkill) {
-      div.title = card.value === 'shu'
-        ? '岁牌 · 黍：声明一个颜色，把手上这个颜色的牌洗乱后均分给其他玩家；分不匀的余牌给手牌最少的人；不占回合，每回合限一张'
-        : '岁牌 · 令：接下来 2 个回合眼花（手牌都看成万能牌，能当万能牌打，原牌效果保留）；打令本身不会昏头，只有眼花还在时续酒才可能上头，令的劲过后喝酒只添眼花；还会给自己 1 张「酒」、往牌堆混 4 张「酒」；不占回合，每回合限一张';
+      if (card.value === 'shu') div.title = '岁牌 · 黍：声明一个颜色，把手上这个颜色的牌洗乱后均分给其他玩家；分不匀的余牌给手牌最少的人；不占回合，每回合限一张';
+      else if (card.value === 'xi') div.title = '岁牌 · 夕：再点一次可以选择变成任意牌——数字 / 跳 / 转 / +2 / 万能 / +4 / 令 / 黍；变普通牌照常结算并换人，变令 / 黍不占回合；变出来的牌边框是墨绿色；每回合限一张';
+      else div.title = '岁牌 · 令：接下来 2 个回合眼花（手牌都看成万能牌，能当万能牌打，原牌效果保留）；打令本身不会昏头，只有眼花还在时续酒才可能上头，令的劲过后喝酒只添眼花；还会给自己 1 张「酒」、往牌堆混 4 张「酒」；不占回合，每回合限一张';
     } else if (fakeWild) div.title = '眼花：这张会当成万能牌打出去（先选颜色），原牌的效果（反转 / +2 / 跳过）照样生效';
     else if (isItem) {
       const wineTip = !me || !me.hasDecree
@@ -1640,6 +1668,9 @@ function renderGame(state) {
       // 直接点/双击手牌不会抢，这样想接着出 +2/+4 叠罚牌时点快了也不会误抢
       div.classList.add('grabbable');
       div.title = '这张和刚打出的牌一样：要抢就点下方「⚡ 抢相同的牌」按钮；直接点手牌不会抢';
+    } else if (playable && isSkill && card.value === 'xi') {
+      // 「夕」：再点一次弹变身选择窗
+      bindXiCardClick(div, originalIndex);
     } else if (playable) {
       // 万能牌 / +4 / 眼花时的任意牌 / 「黍」要先选颜色
       bindHandCardClick(div, originalIndex, card.type === 4 || card.type === 5 || fakeWild || (isSkill && card.value === 'shu'));
@@ -1670,8 +1701,8 @@ function renderGame(state) {
   requestAnimationFrame(() => { if (window.fitCenterArea) window.fitCenterArea(); });
 }
 
-// 颜色选择
-document.querySelectorAll('.color-btn').forEach(btn => {
+// 颜色选择（排除「夕」弹窗里的颜色按钮，它们只记录颜色、不提交）
+document.querySelectorAll('.color-btn:not(.xi-color)').forEach(btn => {
   btn.onclick = () => {
     const color = btn.dataset.color;
     $('color-modal').classList.add('hidden');
@@ -1683,6 +1714,146 @@ document.querySelectorAll('.color-btn').forEach(btn => {
     }
   };
 });
+
+// ===== 「夕」变身弹窗 =====
+// 夕变成的牌由前端先选好，随 playCard 一起发给服务端；服务端校验通过才消耗夕
+function xiOtherPlayers(state) {
+  return ((state && state.players) || []).filter(p => !p.isYou && !p.finished);
+}
+
+function xiColorCount(color) {
+  const hand = (currentGameState && currentGameState.yourHand) || [];
+  return hand.filter(c => c.color === color).length;
+}
+
+function xiHint(text) {
+  const el = $('xi-hint');
+  if (el) el.textContent = text || '';
+}
+
+function renderXiModal() {
+  document.querySelectorAll('#xi-modal .xi-color').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.color === xiColor);
+  });
+
+  // 黍的目标：除自己以外还没出完的玩家（目标出完了就清空选择）
+  const list = $('xi-target-list');
+  const others = xiOtherPlayers(currentGameState);
+  if (xiTargetId !== null && !others.some(p => p.id === xiTargetId)) xiTargetId = null;
+  if (list) {
+    list.innerHTML = '';
+    if (others.length === 0) {
+      list.innerHTML = '<span class="xi-target-empty">没有其他玩家可以给牌</span>';
+    } else {
+      others.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'xi-target' + (p.id === xiTargetId ? ' selected' : '');
+        btn.textContent = `${p.name}（${p.handCount} 张）`;
+        btn.onclick = () => {
+          xiTargetId = (xiTargetId === p.id) ? null : p.id;
+          renderXiModal();
+        };
+        list.appendChild(btn);
+      });
+    }
+  }
+
+  // 变「黍」需要颜色 + 手上有该颜色牌 + 选好目标，缺一项就只变暗、点了给提示
+  const shuBtn = $('xi-shu');
+  if (shuBtn) {
+    const count = xiColor ? xiColorCount(xiColor) : 0;
+    const ready = !!xiColor && count > 0 && xiTargetId !== null;
+    shuBtn.classList.toggle('dim', !ready);
+    if (!xiColor) shuBtn.title = '先选一个颜色';
+    else if (count === 0) shuBtn.title = `你手上没有${COLOR_NAME[xiColor]}色牌`;
+    else if (xiTargetId === null) shuBtn.title = '先在下面选一个玩家';
+    else shuBtn.title = `把${COLOR_NAME[xiColor]}色 ${count} 张里的 ${Math.ceil(count / 2)} 张给他`;
+  }
+
+  if (!xiColor) xiHint('先选颜色，再点要变成的牌（变「令」不需要颜色）');
+  else {
+    const n = xiColorCount(xiColor);
+    xiHint(`${COLOR_NAME[xiColor]}色手牌 ${n} 张；数字 / 跳 / 转 / +2 / 万能 / +4 都用这个颜色`);
+  }
+}
+
+function openXiModal(cardIndex) {
+  const state = currentGameState;
+  const me = findMe(state);
+  if (!state || !me || !me.isCurrent || state.status !== 'playing') return;
+  if (state.paused || state.wildPending || (state.pendingDraw || 0) > 0 || state.skillUsedThisTurn || me.stunned) return;
+  xiCardIndex = cardIndex;
+  xiColor = null;
+  xiTargetId = null;
+  renderXiModal();
+  $('xi-modal').classList.remove('hidden');
+}
+
+function closeXiModal() {
+  xiCardIndex = null;
+  xiColor = null;
+  xiTargetId = null;
+  const modal = $('xi-modal');
+  if (modal) modal.classList.add('hidden');
+  document.querySelectorAll('.hand-card.selected').forEach(d => d.classList.remove('selected'));
+}
+
+function submitXi(xi) {
+  if (xiCardIndex === null) return;
+  const cardIndex = xiCardIndex;
+  closeXiModal();
+  socket.emit('playCard', { cardIndex, xi });
+}
+
+// 夕弹窗里的颜色：只记录，等点具体牌再一起提交
+document.querySelectorAll('#xi-modal .xi-color').forEach(btn => {
+  btn.onclick = () => {
+    xiColor = btn.dataset.color;
+    renderXiModal();
+  };
+});
+
+// 数字 / 跳 / 转 / +2 / 万能 / +4：点一下直接变身打出
+document.querySelectorAll('#xi-modal .xi-tile').forEach(btn => {
+  btn.onclick = () => {
+    if (xiCardIndex === null) return;
+    if (!xiColor) {
+      xiHint('先选一个颜色，再点要变成的牌');
+      return;
+    }
+    const type = Number(btn.dataset.type);
+    const xi = { kind: 'card', type, color: xiColor };
+    if (type === 0) xi.value = Number(btn.dataset.value);
+    submitXi(xi);
+  };
+});
+
+// 变「令」：弱化版，只眼花 2 回合、不生成酒
+$('xi-decree').onclick = () => {
+  if (xiCardIndex === null) return;
+  submitXi({ kind: 'skill', value: 'decree' });
+};
+
+// 变「黍」：一半给指定玩家（奇数多出的 1 张也给目标）
+$('xi-shu').onclick = () => {
+  if (xiCardIndex === null) return;
+  if (!xiColor) {
+    xiHint('先选一个颜色，再给「黍」选玩家');
+    return;
+  }
+  const count = xiColorCount(xiColor);
+  if (count === 0) {
+    xiHint(`你手上没有${COLOR_NAME[xiColor]}色牌，换一个颜色`);
+    return;
+  }
+  if (xiTargetId === null) {
+    xiHint('先在下面选一个玩家');
+    return;
+  }
+  submitXi({ kind: 'skill', value: 'shu', color: xiColor, targetId: xiTargetId });
+};
+
+$('xi-cancel').onclick = closeXiModal;
 
 // 反悔：还没把万能牌发给服务端时，点 × 直接放弃这次出牌
 $('color-cancel').onclick = () => {
