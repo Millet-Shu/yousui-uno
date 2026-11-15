@@ -104,5 +104,35 @@
     center.style.top = Math.round(top - br.top) + 'px';
   }
 
+  // 底部控件的安全距离。
+  // 手机浏览器和微信内置浏览器对 innerHeight 的定义不一样：有的把底部工具栏
+  // 算进去（手牌需要多留一截），有的已经扣掉（再按固定值留白，手牌就会飘到
+  // 屏幕中间、下面空一大片）。这里用 visualViewport 实测被遮挡的高度，写进
+  // --vv-bottom 供 CSS 统一引用，两种内核都能贴住底部又不被工具栏挡住。
+  var lastInset = -1;
+  function updateViewportInset() {
+    var vv = window.visualViewport;
+    var inset = 0;
+    if (vv) inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    inset = Math.round(inset);
+    if (inset === lastInset) return;
+    lastInset = inset;
+    document.documentElement.style.setProperty('--vv-bottom', inset + 'px');
+    fitCenterArea();
+  }
+
+  function bindViewportInset() {
+    updateViewportInset();
+    window.addEventListener('resize', updateViewportInset);
+    window.addEventListener('orientationchange', function () {
+      setTimeout(updateViewportInset, 150);
+    });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', updateViewportInset);
+      window.visualViewport.addEventListener('scroll', updateViewportInset);
+    }
+  }
+
   window.fitCenterArea = fitCenterArea;
+  bindViewportInset();
 })();
