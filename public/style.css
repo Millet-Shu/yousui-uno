@@ -332,14 +332,17 @@ input:focus { border-color: #6c7bff; }
 #draw-pile { position: relative; transition: transform .15s; }
 #draw-pile:hover { transform: scale(1.05); }
 .opponent .report-btn { display: block; margin: 4px auto 0; padding: 4px 12px; background: linear-gradient(135deg, #f2685f, #c62a2a); color: #fff; border: none; border-radius: 10px; font-size: 12px; cursor: pointer; animation: blink 1s infinite; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
-/* 手机顶部两行排座：一行最多 4 个，面板必须窄于列间距，避免左右叠在一起 */
-.opponent.seat-grid { max-width: calc(20vw - 8px); padding: 3px 4px; }
-.opponent.seat-grid .name { font-size: 10px; }
-.opponent.seat-grid .opp-hand { margin: 4px 0; }
-.opponent.seat-grid .hand-count { font-size: 10px; }
-.opponent.seat-grid .drunk-badge,
-.opponent.seat-grid .penalty,
-.opponent.seat-grid .rank { font-size: 9px; padding: 1px 5px; margin-top: 2px; }
+/* 手机竖屏环绕排座：左右两侧用窄面板，顶部保持常规宽度。
+   面板必须窄于侧边留白，否则会和中间牌堆横向撞在一起。 */
+.opponent.seat-side { max-width: calc(19vw - 6px); padding: 3px 4px; }
+.opponent.seat-side .name { font-size: 10px; }
+.opponent.seat-side .opp-hand { margin: 4px 0; }
+.opponent.seat-side .hand-count { font-size: 10px; }
+.opponent.seat-side .drunk-badge,
+.opponent.seat-side .penalty,
+.opponent.seat-side .rank { font-size: 9px; padding: 1px 5px; margin-top: 2px; }
+.opponent.seat-top { max-width: calc(34vw - 8px); padding: 4px 6px; }
+.opponent.seat-top .name { font-size: 11px; }
 @keyframes blink { 50% { opacity: 0.6; } }
 
 #center-area {

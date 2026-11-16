@@ -54,7 +54,7 @@
     var opps = document.querySelectorAll('#opponents .opponent');
     for (var i = 0; i < opps.length; i++) {
       var r = opps[i].getBoundingClientRect();
-      if (r.height > 0 && r.top < topBand && ovLen(jx0, jx1, r.left, r.right) > GRAZE_H) {
+      if (r.height > 0 && (r.top + r.bottom) / 2 < topBand && ovLen(jx0, jx1, r.left, r.right) > GRAZE_H) {
         topLimit = Math.max(topLimit, r.bottom + GAP);
       }
     }
@@ -68,6 +68,28 @@
 
     var availH = Math.max(0, bottomLimit - topLimit);
     var scale = availH > 0 && h > availH ? Math.max(MIN_SCALE, availH / h) : 1;
+
+    // 手机环绕排座时左右两侧会放窄面板，中间区也要按剩余宽度缩放，
+    // 否则会横着压住侧边座位。只统计"中心不在顶部带"的座位，顶部座位走上面的 topLimit。
+    var sideL = 0;
+    var sideR = 0;
+    for (var m = 0; m < opps.length; m++) {
+      var rm = opps[m].getBoundingClientRect();
+      if (rm.height <= 0) continue;
+      var cy = (rm.top + rm.bottom) / 2;
+      if (cy <= topBand) continue;
+      if (rm.left + rm.width / 2 < br.left + br.width / 2) {
+        sideL = Math.max(sideL, rm.right - br.left);
+      } else {
+        sideR = Math.max(sideR, br.right - rm.left);
+      }
+    }
+    if (sideL || sideR) {
+      var availW = br.width - sideL - sideR - GAP * 2;
+      var scaleW = availW > 0 && w > availW ? Math.max(MIN_SCALE, availW / w) : 1;
+      scale = Math.min(scale, scaleW);
+    }
+
     var top = topLimit + Math.max(0, (availH - h * scale) / 2);
 
     // 第一轮只用"理想宽度"判断顶部障碍，允许十几像素的擦边，避免左右竖排的
@@ -82,7 +104,7 @@
       var blocker = null;
       for (var j = 0; j < opps.length; j++) {
         var rj = opps[j].getBoundingClientRect();
-        if (rj.height > 0 && rj.top < topBand &&
+        if (rj.height > 0 && (rj.top + rj.bottom) / 2 < topBand &&
             ovLen(sx0, sx1, rj.left, rj.right) > 2 &&
             ovLen(sy0, sy1, rj.top, rj.bottom) > 2) {
           blocker = rj;

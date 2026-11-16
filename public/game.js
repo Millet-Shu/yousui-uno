@@ -1025,18 +1025,36 @@ function columnSeats(count) {
   return positions;
 }
 
-// 手机窄屏：所有对手排成顶部两行，中间区整体落到他们下方。
-// 窄屏左右两列会和中间牌堆横向撞在一起，改成顶部排布最稳。
-function gridSeats(count) {
-  const rows = [count <= 2 ? count : count <= 4 ? 2 : count <= 6 ? 3 : 4];
-  const rest = count - rows[0];
-  if (rest > 0) rows.push(rest);
-  return rows.reduce((out, n, row) => {
-    for (let i = 0; i < n; i++) {
-      out.push({ x: (i + 1) * 100 / (n + 1), y: row === 0 ? 17 : 33 });
-    }
+// 手机竖屏：对手依旧按东南西北环绕，不能全堆到顶部。
+// 顶部最多两张，其余分到左右两侧（用窄面板），保住"绕桌一圈"的方向感。
+// 侧边座位中心控制在 33% 高度，避开中间牌堆和底部手牌。
+function narrowRingSeats(count) {
+  if (count <= 1) return [{ x: 50, y: 15 }];
+  if (count === 2) return [{ x: 84, y: 16 }, { x: 16, y: 16 }];
+  if (count === 3) return [
+    { x: 86, y: 34 },   // 东（我的右侧）
+    { x: 50, y: 15 },   // 北（对面）
+    { x: 14, y: 34 },   // 西（我的左侧）
+  ];
+  if (count === 4) return [
+    { x: 86, y: 35 }, { x: 74, y: 15 }, { x: 26, y: 15 }, { x: 14, y: 35 },
+  ];
+  // 5 个以上：右侧下→上、顶部右→左、左侧上→下，保持出牌顺序绕一圈
+  const top = 2;
+  const rest = count - top;
+  const right = Math.ceil(rest / 2);
+  const left = rest - right;
+  const spread = (n, from, to) => {
+    if (n <= 1) return [to];
+    const out = [];
+    for (let i = 0; i < n; i++) out.push(from + (to - from) * i / (n - 1));
     return out;
-  }, []);
+  };
+  const out = [];
+  spread(right, 58, 22).forEach(y => out.push({ x: 86, y }));
+  out.push({ x: 74, y: 12 }, { x: 26, y: 12 });
+  spread(left, 22, 58).forEach(y => out.push({ x: 14, y }));
+  return out;
 }
 
 function cardText(c) {
@@ -1345,9 +1363,9 @@ function renderGame(state) {
   // 座位：以"我"为南位（底部），从我的下家开始沿出牌顺序逆时针排列
   // 观战者没有自己的座位，按玩家总数排座
   const oppCount = isSpectator ? total : total - 1;
-  const gridMode = window.innerWidth <= 600; // 手机窄屏：对手排成顶部两行
+  const narrowMode = window.innerWidth <= 600; // 手机竖屏：对手环绕，侧边用窄面板
   let seatPositions;
-  if (gridMode) seatPositions = gridSeats(oppCount);
+  if (narrowMode) seatPositions = narrowRingSeats(oppCount);
   else if (oppCount >= 5) seatPositions = columnSeats(oppCount);
   else if (oppCount === 4) seatPositions = window.innerWidth <= 900 ? SEAT_RING_4_NARROW : SEAT_RING_4;
   else if (oppCount === 3) seatPositions = SEAT_RING_3;
@@ -1371,7 +1389,8 @@ function renderGame(state) {
   ordered.forEach((p, i) => {
     const pos = seatPositions[i % seatPositions.length];
     const div = document.createElement('div');
-    div.className = 'opponent ' + (p.isCurrent ? 'current' : '') + (gridMode ? ' seat-grid' : '');
+    const sideCls = narrowMode ? (pos.x >= 78 ? ' seat-side' : pos.x <= 22 ? ' seat-side' : ' seat-top') : '';
+    div.className = 'opponent ' + (p.isCurrent ? 'current' : '') + sideCls;
     div.style.left = pos.x + '%';
     div.style.top = pos.y + '%';
     div.style.transform = 'translate(-50%, -50%)';
@@ -1388,8 +1407,8 @@ function renderGame(state) {
       : '';
     let cardsHtml = '';
     // 最多显示 11 张牌背，叠放间距由 CSS 控制（居中、不撑出面板）
-    // 手机顶部排座时列宽只有 70px 左右，少叠几张，超过数量直接用总数标注
-    const maxStack = gridMode ? 7 : 11;
+    // 手机侧边座位只有 60~70px 宽，少叠几张，超过数量直接用总数标注
+    const maxStack = narrowMode ? 7 : 11;
     const shown = Math.min(p.handCount, maxStack);
     const backCls = isOfficialUI() ? 'opp-card-back official' : 'opp-card-back';
     for (let j = 0; j < shown; j++) {
